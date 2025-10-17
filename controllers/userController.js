@@ -1,7 +1,6 @@
 const User = require("../models/User");
 
 module.exports = {
-    // Get current user profile
     getUser: async (req, res) => {
         try {
             const user = await User.findById(req.user.id);
@@ -18,7 +17,6 @@ module.exports = {
         }
     },
 
-    // Verify account with OTP
     verifyAccount: async (req, res) => {
         const userOtp = req.params.otp;
 
@@ -45,7 +43,6 @@ module.exports = {
         }
     },
 
-    // Verify phone number
     verifyPhone: async (req, res) => {
         const phone = req.params.phone;
 
@@ -68,7 +65,6 @@ module.exports = {
         }
     },
 
-    // Delete user
     deleteUser: async (req, res) => {
         try {
             const user = await User.findByIdAndDelete(req.user.id);

@@ -1,54 +1,73 @@
+const asyncHandler = require('express-async-handler');
 const Phone = require('../models/Phone');
 const Accessory = require('../models/Accessory');
 
-exports.getTotalProfitSummary = async (req, res) => {
-    try {
-        const phones = await Phone.find();
-        const accessories = await Accessory.find();
+// Total profit (phones + accessories)
+exports.getTotalProfit = asyncHandler(async (req, res) => {
+    const phones = await Phone.find({}, 'pricing');
+    const accessories = await Accessory.find({}, 'pricing');
 
-        const phoneProfit = phones.reduce((acc, p) => acc + (p.pricing.sellingPrice - p.pricing.purchasePrice), 0);
-        const accessoryProfit = accessories.reduce((acc, a) => acc + (a.pricing.sellingPrice - a.pricing.purchasePrice), 0);
+    const totalPhoneProfit = phones.reduce((acc, p) => {
+        if (p.pricing?.purchasePrice && p.pricing?.sellingPrice)
+            acc += p.pricing.sellingPrice - p.pricing.purchasePrice;
+        return acc;
+    }, 0);
 
-        res.json({
-            totalProfit: phoneProfit + accessoryProfit,
-            details: {
-                phones: phoneProfit,
-                accessories: accessoryProfit
-            }
-        });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ message: err.message });
-    }
-};
-
-// GET /api/reports/monthly-profit
-exports.getMonthlyProfit = async (req, res) => {
-    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-    const phones = await Phone.aggregate([
-        {
-            $group: {
-                _id: { $month: "$createdAt" },
-                profit: { $sum: { $subtract: ["$pricing.sellingPrice", "$pricing.purchasePrice"] } }
-            }
-        },
-        { $sort: { "_id": 1 } }
-    ]);
-
-    const accessories = await Accessory.aggregate([
-        {
-            $group: {
-                _id: { $month: "$createdAt" },
-                profit: { $sum: { $subtract: ["$pricing.sellingPrice", "$pricing.purchasePrice"] } }
-            }
-        },
-        { $sort: { "_id": 1 } }
-    ]);
+    const totalAccessoryProfit = accessories.reduce((acc, a) => {
+        if (a.pricing?.purchasePrice && a.pricing?.sellingPrice)
+            acc += a.pricing.sellingPrice - a.pricing.purchasePrice;
+        return acc;
+    }, 0);
 
     res.json({
-        phones: phones.map(p => ({ month: months[p._id - 1], profit: p.profit })),
-        accessories: accessories.map(a => ({ month: months[a._id - 1], profit: a.profit })),
+        totalProfit: totalPhoneProfit + totalAccessoryProfit,
+        phoneProfit: totalPhoneProfit,
+        accessoryProfit: totalAccessoryProfit,
     });
-};
+});
 
+// Low-stock report
+exports.getLowStockItems = asyncHandler(async (req, res) => {
+    const lowPhones = await Phone.find({ $expr: { $lte: ['$stock', '$lowStockThreshold'] } })
+        .select('brand model stock lowStockThreshold');
+    const lowAccessories = await Accessory.find({ $expr: { $lte: ['$stock', '$lowStockThreshold'] } })
+        .select('name type stock lowStockThreshold');
+
+    res.json({ lowPhones, lowAccessories });
+});
+
+// Top brands by inventory count
+exports.getTopBrands = asyncHandler(async (req, res) => {
+    const result = await Phone.aggregate([
+        { $group: { _id: '$brand', totalStock: { $sum: '$stock' } } },
+        { $sort: { totalStock: -1 } },
+        { $limit: 5 },
+    ]);
+    res.json(result);
+});
+
+// Average profit margin by brand
+exports.getBrandProfitMargins = asyncHandler(async (req, res) => {
+    const result = await Phone.aggregate([
+        {
+            $group: {
+                _id: '$brand',
+                avgMargin: {
+                    $avg: {
+                        $multiply: [
+                            {
+                                $divide: [
+                                    { $subtract: ['$pricing.sellingPrice', '$pricing.purchasePrice'] },
+                                    '$pricing.sellingPrice',
+                                ],
+                            },
+                            100,
+                        ],
+                    },
+                },
+            },
+        },
+        { $sort: { avgMargin: -1 } },
+    ]);
+    res.json(result);
+});

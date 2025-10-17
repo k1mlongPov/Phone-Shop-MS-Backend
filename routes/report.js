@@ -1,8 +1,10 @@
 const express = require('express');
 const router = express.Router();
-const reportCtrl = require('../controllers/reportController');
+const reportController = require('../controllers/reportController');
 
-router.get('/profit/summary', reportCtrl.getTotalProfitSummary);
-router.get('/monthly-profit', reportCtrl.getMonthlyProfit);
+router.get('/profit', reportController.getTotalProfit);
+router.get('/low-stock', reportController.getLowStockItems);
+router.get('/top-brands', reportController.getTopBrands);
+router.get('/brand-margins', reportController.getBrandProfitMargins);
 
 module.exports = router;

@@ -2,16 +2,14 @@ const express = require('express');
 const router = express.Router();
 const accessoryController = require('../controllers/accessoryController');
 
-router.post('/', accessoryController.createAccessory); //worked
+router.post('/', accessoryController.createAccessory);
 
-router.get('/', accessoryController.listAccessories); //worked
+router.get('/byId/:id', accessoryController.getAccessoryById);
 
-router.get('/:id', accessoryController.getAccessory); //worked
+router.get('/', accessoryController.listAccessories);
 
-router.put('/:id', accessoryController.updateAccessory); //worked
+router.put('/update/:id', accessoryController.updateAccessory);
 
-router.delete('/:id', accessoryController.deleteAccessory); //worked
-
-router.get('/profit/total', accessoryController.getTotalProfit);
+router.delete('/delete/:id', accessoryController.deleteAccessory);
 
 module.exports = router;

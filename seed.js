@@ -1,129 +1,171 @@
-require('dotenv').config();
+
 const mongoose = require('mongoose');
-const connectDB = require('./config/db');
+require('dotenv').config();
+
+const Category = require('./models/Category');
+const Supplier = require('./models/Supplier');
 const Phone = require('./models/Phone');
 const Accessory = require('./models/Accessory');
-const Category = require('./models/Category');
 
-(async () => {
-    await connectDB(process.env.MONGOURL);
+const seedDatabase = async () => {
+    try {
+        await mongoose.connect(process.env.MONGOURL);
+        console.log('✅ Connected to MongoDB');
 
-    await Phone.deleteMany({});
-    await Accessory.deleteMany({});
-    await Category.deleteMany({}); // ✅ clear old categories
+        // Clear old data
+        await Promise.all([
+            Category.deleteMany({}),
+            Supplier.deleteMany({}),
+            Phone.deleteMany({}),
+            Accessory.deleteMany({})
+        ]);
 
-    const mainCategories = await Category.insertMany([
-        { name: 'Phones', description: 'All smartphones and brands' },
-        { name: 'Accessories', description: 'Chargers, cases, cables, etc.' },
-    ]);
+        console.log('🧹 Old data cleared');
 
-    const phonesCategory = await Category.findOneAndUpdate(
-        { name: 'Phones' },
-        { description: 'All mobile phones' },
-        { new: true, upsert: true }
-    );
+        // --- Categories ---
+        const phoneCat = await Category.create({ name: 'Phone' });
+        const accessoryCat = await Category.create({ name: 'Accessory' });
 
-    const accessoryCategory = await Category.findOneAndUpdate(
-        { name: 'Accessories' },
-        { description: 'Chargers, cases, cables, etc.' },
-        { new: true, upsert: true }
-    );
+        const subCategories = await Category.insertMany([
+            { name: 'iPhone', parent: phoneCat._id },
+            { name: 'Oppo', parent: phoneCat._id },
+            { name: 'Vivo', parent: phoneCat._id },
+            { name: 'Headphones', parent: accessoryCat._id },
+            { name: 'Chargers', parent: accessoryCat._id },
+            { name: 'Cases', parent: accessoryCat._id },
+        ]);
 
-    await Category.insertMany([
-        { name: 'iPhone', parent: phonesCategory },
-        { name: 'Samsung', parent: phonesCategory },
-        { name: 'Vivo', parent: phonesCategory },
-        { name: 'Oppo', parent: phonesCategory },
-        { name: 'Cases', parent: accessoryCategory },
-        { name: 'Chargers', parent: accessoryCategory },
-    ]);
+        console.log('✅ Categories added');
 
+        // --- Suppliers ---
+        const suppliers = await Supplier.insertMany([
+            { name: 'Tech Supplies Ltd', phone: '123456789', email: 'info@techsupplies.com', address: '123 Market Street' },
+            { name: 'GadgetHub', phone: '987654321', email: 'support@gadgethub.com', address: '45 Silicon Ave' },
+        ]);
 
-    const phones = [
-        {
-            brand: 'ExampleBrand',
-            model: 'X1 Pro',
-            slug: 'examplebrand-x1-pro',
-            pricing: {
-                purchasePrice: 500,
-                sellingPrice: 699
+        console.log('✅ Suppliers added');
+
+        // --- Phones ---
+        const phones = await Phone.insertMany([
+            {
+                brand: 'Apple',
+                model: 'iPhone 15 Pro',
+                slug: 'iphone-15-pro',
+                pricing: { purchasePrice: 950, sellingPrice: 1199 },
+                currency: 'USD',
+                stock: 15,
+                images: ['https://example.com/iphone15pro.jpg'],
+                category: subCategories.find(c => c.name === 'iPhone')._id,
+                supplier: suppliers[0]._id,
+                specs: {
+                    chipset: 'A17 Pro',
+                    ram: 8,
+                    storage: 256,
+                    display: { sizeIn: 6.1, resolution: '2556x1179', type: 'OLED', refreshRate: 120 },
+                    cameras: { main: '48MP', front: '12MP' },
+                    batteryMah: 3274,
+                    chargingW: 27,
+                    os: 'iOS 17',
+                    colors: ['Black Titanium', 'White Titanium']
+                }
             },
-            currency: 'USD',
-            specs: {
-                chipset: 'SnapDragon 9000',
-                ram: 8,
-                storage: 128,
-                display: { sizeIn: 6.5, resolution: '2400x1080', type: 'AMOLED', refreshRate: 120 },
-                cameras: { main: '108MP', front: '32MP' },
-                batteryMah: 4500,
-                chargingW: 65,
-                os: 'Android 14',
-                colors: ['Black', 'Blue']
+            {
+                brand: 'Oppo',
+                model: 'Find X7',
+                slug: 'oppo-find-x7',
+                pricing: { purchasePrice: 550, sellingPrice: 699 },
+                currency: 'USD',
+                stock: 25,
+                images: ['https://example.com/oppo-findx7.jpg'],
+                category: subCategories.find(c => c.name === 'Oppo')._id,
+                supplier: suppliers[1]._id,
+                specs: {
+                    chipset: 'Snapdragon 8 Gen 3',
+                    ram: 12,
+                    storage: 256,
+                    display: { sizeIn: 6.7, resolution: '3200x1440', type: 'AMOLED', refreshRate: 120 },
+                    cameras: { main: '50MP', front: '32MP' },
+                    batteryMah: 5000,
+                    chargingW: 100,
+                    os: 'Android 14',
+                    colors: ['Black', 'Blue']
+                }
             },
-            category: phonesCategory,
-            images: ['https://example.com/x1-front.jpg'],
-            stock: 10,
-            sku: 'EB-X1PRO-128'
-        },
-        {
-            brand: 'ExampleBrand',
-            model: 'X1 Lite',
-            slug: 'examplebrand-x1-lite',
-            pricing: {
-                purchasePrice: 300,
-                sellingPrice: 399
+            {
+                brand: 'Vivo',
+                model: 'V30 Pro',
+                slug: 'vivo-v30-pro',
+                pricing: { purchasePrice: 480, sellingPrice: 599 },
+                currency: 'USD',
+                stock: 18,
+                images: ['https://example.com/vivo-v30pro.jpg'],
+                category: subCategories.find(c => c.name === 'Vivo')._id,
+                supplier: suppliers[1]._id,
+                specs: {
+                    chipset: 'Dimensity 8200',
+                    ram: 8,
+                    storage: 256,
+                    display: { sizeIn: 6.67, resolution: '2400x1080', type: 'AMOLED', refreshRate: 120 },
+                    cameras: { main: '64MP', front: '32MP' },
+                    batteryMah: 4600,
+                    chargingW: 80,
+                    os: 'Android 14',
+                    colors: ['Midnight Black', 'Aurora Blue']
+                }
+            }
+        ]);
+
+        console.log('✅ Phones added');
+
+        // --- Accessories ---
+        const accessories = await Accessory.insertMany([
+            {
+                name: 'iPhone 15 Pro Case',
+                type: 'Case',
+                brand: 'Apple',
+                pricing: { purchasePrice: 15, sellingPrice: 35 },
+                stock: 50,
+                images: ['https://example.com/iphone15procase.jpg'],
+                category: subCategories.find(c => c.name === 'Cases')._id,
+                supplier: suppliers[0]._id,
+                compatibility: ['iphone-15-pro'],
+                attributes: { material: 'Silicone', color: 'Black' }
             },
-            currency: 'USD',
-            specs: { ram: 6, storage: 64, batteryMah: 4000, os: 'Android 14', colors: ['White'] },
-            stock: 25,
-            category: phonesCategory
-        }
-    ];
-
-
-
-    const accessories = [
-        {
-            name: 'X1 Pro Clear Case',
-            type: 'case',
-            brand: 'CaseMaker',
-            pricing: {
-                purchasePrice: 10,
-                sellingPrice: 19.99
+            {
+                name: 'Oppo Find X7 Charger',
+                type: 'Charger',
+                brand: 'Oppo',
+                pricing: { purchasePrice: 10, sellingPrice: 25 },
+                stock: 60,
+                images: ['https://example.com/oppocharger.jpg'],
+                category: subCategories.find(c => c.name === 'Chargers')._id,
+                supplier: suppliers[1]._id,
+                compatibility: ['oppo-find-x7'],
+                attributes: { power: '100W', connector: 'USB-C' }
             },
-            compatibility: ['examplebrand-x1-pro'],
-            stock: 100,
-            category: accessoryCategory
-        },
-        {
-            name: 'Fast Charger 65W',
-            type: 'charger',
-            brand: 'ChargeCo',
-            pricing: {
-                purchasePrice: 18,
-                sellingPrice: 29.99
-            },
-            stock: 50,
-            category: accessoryCategory,
-            attributes: { wattage: 65, cableIncluded: true }
-        }
-    ];
+            {
+                name: 'Vivo Headphones',
+                type: 'Headphones',
+                brand: 'Vivo',
+                pricing: { purchasePrice: 20, sellingPrice: 49 },
+                stock: 35,
+                images: ['https://example.com/vivoheadphones.jpg'],
+                category: subCategories.find(c => c.name === 'Headphones')._id,
+                supplier: suppliers[1]._id,
+                compatibility: ['vivo-v30-pro'],
+                attributes: { type: 'Wireless', battery: '30h' }
+            }
+        ]);
 
+        console.log('✅ Accessories added');
 
-    await Phone.insertMany(phones);
-    await Accessory.insertMany(accessories);
-    console.log('✅ Seeded hierarchical categories successfully');
+        console.log('\n🎉 Database seeding completed successfully!');
+        console.log(`📱 Phones: ${phones.length}, 🎧 Accessories: ${accessories.length}`);
+        process.exit();
+    } catch (err) {
+        console.error('❌ Seeding failed:', err);
+        process.exit(1);
+    }
+};
 
-    (async () => {
-        try {
-            await connectDB(process.env.MONGOURL);
-            //await Promise.all([Phone.deleteMany({}), Accessory.deleteMany({}), Category.deleteMany({})]);
-            // ... insert data here ...
-            console.log('✅ Seeded DB successfully');
-            process.exit();
-        } catch (error) {
-            console.error('❌ Seeding failed:', error);
-            process.exit(1);
-        }
-    })();
-})();
+seedDatabase();
