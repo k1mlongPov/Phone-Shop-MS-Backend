@@ -2,6 +2,7 @@ const asyncHandler = require('express-async-handler');
 const Category = require('../models/Category');
 
 
+
 exports.createCategory = asyncHandler(async (req, res) => {
     const category = await Category.create(req.body);
     res.status(201).json(category);
@@ -11,6 +12,11 @@ exports.getCategories = async (req, res) => {
     const categories = await Category.find({ parent: null }).lean();
     res.json(categories);
 };
+
+exports.listSubcategories = asyncHandler(async (req, res) => {
+    const subcategories = await Category.find({ parent: { $ne: null } });
+    res.status(200).json(subcategories);
+});
 
 exports.getSubcategories = async (req, res) => {
     const subcategories = await Category.find({ parent: req.params.id }).lean();

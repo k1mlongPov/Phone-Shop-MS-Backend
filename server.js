@@ -2,6 +2,9 @@ require('dotenv').config();
 const express = require('express');
 const morgan = require('morgan');
 const cors = require('cors');
+const multer = require('multer');
+const upload = multer();
+const path = require('path');
 
 const connectDB = require('./config/db');
 const { errorHandler } = require('./middleware/errorMiddleware');
@@ -30,8 +33,9 @@ app.use('/api/suppliers', supplierRoutes);
 app.use('/api/customers', customerRoutes);
 app.use('/api/stock-movements', stockMovementRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, "0.0.0.0", () => console.log(`Server running on port http/0.0.0.0:${PORT}`));
