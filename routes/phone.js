@@ -2,11 +2,12 @@ const express = require('express');
 const router = express.Router();
 const phoneController = require('../controllers/phoneController');
 const multer = require('multer');
+const path = require('path');
 
 // --- Multer setup ---
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        cb(null, 'uploads/phones/');
+        cb(null, path.join(__dirname, '../uploads/phones'));
     },
     filename: (req, file, cb) => {
         const uniqueName = `${Date.now()}-${file.originalname}`;
