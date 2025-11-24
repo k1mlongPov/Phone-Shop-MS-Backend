@@ -123,7 +123,7 @@ async function verifyPublic({ email, otp }) {
 
 async function login({ email, password }) {
     const lowerEmail = email.toLowerCase();
-    const user = await User.findOne({ email: lowerEmail }).select('+password +roles');
+    const user = await User.findOne({ email: lowerEmail }).select('+password +roles +refreshToken');
     if (!user) throw new AppError('Invalid credentials', 401);
 
     const match = await bcrypt.compare(password, user.password);
@@ -132,36 +132,37 @@ async function login({ email, password }) {
     const roles = Array.isArray(user.roles)
         ? user.roles.map(r => String(r).toLowerCase())
         : [];
-    const isAdmin = roles.includes('admin');
 
+    const isAdmin = roles.includes('admin');
     if (!isAdmin) {
         throw new AppError('You do not have permission to access the admin panel', 403);
     }
 
     const payload = { id: user._id, roles, email: user.email };
 
-    // SHORT-LIVED ACCESS TOKEN (default: 15m)
-    const accessToken = jwt.sign(
-        payload,
-        process.env.JWT_SECRET,
-        { expiresIn: process.env.JWT_EXPIRES_IN }
-    );
+    const accessToken = jwt.sign(payload, process.env.JWT_SECRET, {
+        expiresIn: process.env.JWT_EXPIRES_IN, // e.g. "15m"
+    });
 
-    // LONG-LIVED REFRESH TOKEN (default: 30d)
     const refreshToken = jwt.sign(
         { id: user._id },
         process.env.JWT_REFRESH_SECRET,
-        { expiresIn: process.env.JWT_REFRESH_EXPIRES_IN }
+        { expiresIn: process.env.JWT_REFRESH_EXPIRES_IN } // e.g. "30d"
     );
 
-    // Save refresh token in DB
+    // ⭐ Save refresh token for future refresh requests
     user.refreshToken = refreshToken;
     await user.save();
 
     const safe = user.toObject();
     delete safe.password;
 
-    return { user: safe, accessToken, refreshToken };
+    return {
+        user: safe,
+        accessToken,
+        refreshToken
+    };
+
 }
 
 async function me(userId) {

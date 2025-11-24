@@ -8,10 +8,10 @@ cloudinary.config({
 
 async function deleteImage(url) {
     try {
-        // Extract PUBLIC ID properly for Cloudinary
         const parts = url.split('/');
         const folder = parts[parts.length - 2];
         const filename = parts[parts.length - 1].split('.')[0];
+
         const publicId = `${folder}/${filename}`;
 
         await cloudinary.uploader.destroy(publicId);
@@ -20,5 +20,4 @@ async function deleteImage(url) {
     }
 }
 
-module.exports = cloudinary;
-module.exports.deleteImage = deleteImage;
+module.exports = { cloudinary, deleteImage };

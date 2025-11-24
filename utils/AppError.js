@@ -1,8 +1,8 @@
 class AppError extends Error {
-    constructor(message, status = 400) {
+    constructor(message, statusCode) {
         super(message);
-        this.status = status;
-        Error.captureStackTrace(this, this.constructor);
+        this.statusCode = statusCode;
     }
 }
+
 module.exports = AppError

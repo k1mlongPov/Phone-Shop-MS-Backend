@@ -142,17 +142,21 @@ function parseVariants(data) {
 }
 
 module.exports = {
+
     createPhone: asyncHandler(async (req, res) => {
         const data = req.body || {};
-        if (!data.brand || !data.model)
+
+        if (!data.brand || !data.model) {
             throw new AppError('brand and model are required', 400);
+        }
 
         const pricing = parsePricing(data);
         const specs = parseSpecs(data);
         const variants = parseVariants(data);
 
+        // Cloudinary image URLs
         const images = req.files?.length
-            ? req.files.map(f => f.path)   // Cloudinary URL
+            ? req.files.map(f => f.path)
             : [];
 
         const totalStock = Array.isArray(variants)
@@ -162,7 +166,7 @@ module.exports = {
         const phoneData = {
             brand: data.brand,
             model: data.model,
-            slug: (data.brand + "-" + data.model).toLowerCase(),
+            slug: `${data.brand}-${data.model}`.toLowerCase(),
             pricing,
             currency: data.currency || 'USD',
             specs,
@@ -178,6 +182,7 @@ module.exports = {
 
         const phone = await PhoneService.createPhone(phoneData);
 
+        // Record first stock entry
         await stockService.createMovement({
             productId: phone._id,
             modelType: 'Phone',
@@ -189,24 +194,24 @@ module.exports = {
             note: 'Initial stock on creation',
         });
 
+        // Supplier linking
         if (phone.supplier) {
-            await Supplier.findByIdAndUpdate(
-                phone.supplier,
-                {
-                    $addToSet: {
-                        suppliedProducts: {
-                            productId: phone._id,
-                            modelType: 'Phone',
-                            lastRestockDate: new Date(),
-                        }
+            await Supplier.findByIdAndUpdate(phone.supplier, {
+                $addToSet: {
+                    suppliedProducts: {
+                        productId: phone._id,
+                        modelType: 'Phone',
+                        lastRestockDate: new Date(),
                     }
                 }
-            );
+            });
         }
-        res.status(201).json({ success: true, phone });
+
+        res.status(201).json({
+            success: true,
+            phone
+        });
     }),
-
-
 
     listPhones: asyncHandler(async (req, res) => {
         // forward query params directly; service validates/uses them
@@ -232,29 +237,27 @@ module.exports = {
         const variants = parseVariants(body);
 
         const newTotalStock = Array.isArray(variants)
-            ? variants.reduce((s, v) => s + (Number(v.stock) || 0), 0)
+            ? variants.reduce((sum, v) => sum + (Number(v.stock) || 0), 0)
             : phone.stock;
 
-        let images = phone.images; // keep old images if none uploaded
+        // Start with old images
+        let images = phone.images;
 
-        let newImages = req.files?.map(f => f.path) || [];
+        // Replace images if new upload provided
+        const newImages = req.files?.map(f => f.path) || [];
 
-        // If new images uploaded → delete old and replace
         if (newImages.length > 0) {
-            if (phone.images && phone.images.length > 0) {
-                for (const oldUrl of phone.images) {
-                    await deleteImage(oldUrl);
-                }
+            // Delete old cloudinary files
+            for (const oldUrl of phone.images) {
+                await deleteImage(oldUrl);
             }
-            images = newImages; // replace images
+            images = newImages;
         }
-
-        // ❌ REMOVE THIS LINE — BROKEN
-        // payload.images = images;
 
         const newSupplier = body.supplier || null;
         const oldSupplier = phone.supplier?.toString();
 
+        // Manage supplier linking
         if (oldSupplier && oldSupplier !== newSupplier) {
             await Supplier.findByIdAndUpdate(oldSupplier, {
                 $pull: { suppliedProducts: { productId: phone._id } }
@@ -267,12 +270,13 @@ module.exports = {
                     suppliedProducts: {
                         productId: phone._id,
                         modelType: "Phone",
-                        lastRestockDate: new Date()
+                        lastRestockDate: new Date(),
                     }
                 }
             });
         }
 
+        // Stock movement if changed
         if (newTotalStock !== phone.stock) {
             await stockService.createMovement({
                 productId: phone._id,
@@ -286,10 +290,11 @@ module.exports = {
             });
         }
 
+        // Final update
         const updated = await PhoneService.updatePhone(id, {
             brand: body.brand,
             model: body.model,
-            slug: (body.brand + "-" + body.model).toLowerCase(),
+            slug: `${body.brand}-${body.model}`.toLowerCase(),
             pricing,
             currency: body.currency,
             specs,
@@ -299,7 +304,7 @@ module.exports = {
             supplier: newSupplier,
             lowStockThreshold: Number(body.lowStockThreshold) || 5,
             isActive: body.isActive !== undefined ? Boolean(body.isActive) : phone.isActive,
-            images,  // ✔ FINAL correct image value
+            images, // Safe, correct value
         });
 
         res.json({
@@ -309,35 +314,29 @@ module.exports = {
         });
     }),
 
-
     deletePhone: async (req, res, next) => {
         const { id } = req.params;
 
         const phone = await Phone.findById(id);
         if (!phone) return next(new AppError("Phone not found", 404));
 
-        // Delete each image
+        // Delete Cloudinary images
         if (Array.isArray(phone.images)) {
-            phone.images.forEach(imgUrl => {
+            for (const imgUrl of phone.images) {
                 try {
-                    // Extract filename from URL
-                    const filename = imgUrl.split('/').pop();
-
-                    const filePath = path.join(__dirname, '..', 'uploads', 'phones', filename);
-
-                    if (fs.existsSync(filePath)) {
-                        fs.unlinkSync(filePath);
-                        console.log("Deleted:", filePath);
-                    }
+                    await deleteImage(imgUrl);
                 } catch (err) {
-                    console.error("Error deleting image:", err);
+                    console.error("Cloudinary delete error:", err);
                 }
-            });
+            }
         }
 
         await phone.deleteOne();
 
-        res.json({ success: true, message: "Phone deleted successfully" });
+        res.json({
+            success: true,
+            message: "Phone deleted successfully",
+        });
     },
 
     // Example: endpoint to adjust stock (optional)

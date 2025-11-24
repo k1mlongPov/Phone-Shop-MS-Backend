@@ -34,6 +34,8 @@ const userSchema = new mongoose.Schema({
     ],
     lastLogin: { type: Date },
     isActive: { type: Boolean, default: true },
+
+    refreshToken: { type: String, select: false, default: null },
 }, { timestamps: true });
 
 // Password hashing

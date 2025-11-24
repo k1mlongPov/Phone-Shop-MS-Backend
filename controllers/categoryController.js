@@ -4,23 +4,6 @@ const { deleteImage } = require('../utils/cloudinary');
 
 module.exports = {
 
-    create: asyncHandler(async (req, res) => {
-        const payload = req.body || {};
-
-        // If image uploaded, attach URL
-        if (req.file) {
-            payload.image = req.file.path;   // Cloudinary URL
-        }
-
-        const category = await categoryService.create(payload);
-
-        res.status(201).json({
-            success: true,
-            data: category,
-        });
-    }),
-
-
     getRoot: asyncHandler(async (req, res) => {
         const categories = await categoryService.getRootCategories();
         res.json({ success: true, data: categories });
@@ -35,6 +18,22 @@ module.exports = {
         const parentId = req.params.id;
         const subcategories = await categoryService.getSubcategoriesByParent(parentId);
         res.json({ success: true, data: subcategories });
+    }),
+
+    create: asyncHandler(async (req, res) => {
+        const payload = req.body || {};
+
+        // If image uploaded, attach URL
+        if (req.file) {
+            payload.image = req.file.path;   // Cloudinary URL
+        }
+
+        const category = await categoryService.create(payload);
+
+        res.status(201).json({
+            success: true,
+            data: category,
+        });
     }),
 
     update: asyncHandler(async (req, res) => {
@@ -64,9 +63,27 @@ module.exports = {
         });
     }),
 
-
     delete: asyncHandler(async (req, res) => {
-        await categoryService.delete(req.params.id);
-        res.json({ success: true, message: 'Category deleted' });
-    })
+        const id = req.params.id;
+
+        const category = await categoryService.getById(id);
+        if (!category) throw new AppError("Category not found", 404);
+
+        // Delete Cloudinary image
+        if (category.image) {
+            try {
+                await deleteImage(category.image);
+            } catch (err) {
+                console.error("Cloudinary delete failed:", err);
+            }
+        }
+
+        await categoryService.delete(id);
+
+        res.json({
+            success: true,
+            message: "Category deleted successfully"
+        });
+    }),
+
 };

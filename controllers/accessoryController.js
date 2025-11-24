@@ -5,6 +5,7 @@ const parseAttributes = require('../utils/parseAttributes');
 const generateAccessorySku = require('../utils/generateAccessorySku');
 const stockService = require('../services/stockMovementService');
 const Supplier = require('../models/Supplier');
+const Accessory = require('../models/Accessory');
 const fs = require('fs');
 const path = require('path');
 const { deleteImage } = require('../utils/cloudinary');
@@ -39,6 +40,17 @@ function parsePricing(payload) {
 
 
 module.exports = {
+
+    list: asyncHandler(async (req, res) => {
+        const result = await AccessoryService.listAccessories(req.query);
+        res.status(200).json(result);
+    }),
+
+    get: asyncHandler(async (req, res) => {
+        const accessory = await AccessoryService.getAccessoryById(req.params.id);
+        res.status(200).json(accessory);
+    }),
+
     create: asyncHandler(async (req, res) => {
         const payload = req.body || {};
 
@@ -46,17 +58,18 @@ module.exports = {
         const attributes = parseAttributes(payload);
 
         const images = req.files?.length
-            ? req.files.map((f) => f.path) // Cloudinary URL
+            ? req.files.map(f => f.path)   // Cloudinary URLs
             : [];
-
 
         let compatibility = [];
         if (payload.compatibility) {
             if (Array.isArray(payload.compatibility)) {
                 compatibility = payload.compatibility;
-            } else if (typeof payload.compatibility === 'object') {
+            }
+            else if (typeof payload.compatibility === 'object') {
                 compatibility = Object.values(payload.compatibility);
-            } else if (typeof payload.compatibility === 'string') {
+            }
+            else if (typeof payload.compatibility === 'string') {
                 try {
                     compatibility = JSON.parse(payload.compatibility);
                 } catch {
@@ -87,79 +100,119 @@ module.exports = {
             note: 'Initial stock on creation',
         });
 
-        // ⭐ UPDATE SUPPLIER
         if (accessory.supplier) {
-            await Supplier.findByIdAndUpdate(
-                accessory.supplier,
-                {
-                    $addToSet: {
-                        suppliedProducts: {
-                            productId: accessory._id,
-                            modelType: 'Accessory',
-                            lastRestockDate: new Date(),
-                        }
+            await Supplier.findByIdAndUpdate(accessory.supplier, {
+                $addToSet: {
+                    suppliedProducts: {
+                        productId: accessory._id,
+                        modelType: 'Accessory',
+                        lastRestockDate: new Date(),
                     }
                 }
-            );
+            });
         }
 
-        return res.status(201).json({
+        res.status(201).json({
             status: true,
             message: 'Accessory created successfully!',
             data: accessory,
         });
     }),
 
-
-
-    list: asyncHandler(async (req, res) => {
-        const result = await AccessoryService.listAccessories(req.query);
-        res.status(200).json(result);
-    }),
-
-    get: asyncHandler(async (req, res) => {
-        const accessory = await AccessoryService.getAccessoryById(req.params.id);
-        res.status(200).json(accessory);
-    }),
-
     update: asyncHandler(async (req, res) => {
-        const payload = req.body || {};
         const id = req.params.id;
+        const payload = req.body || {};
 
-        // normalize pricing if provided via bracketed fields
-        if (payload['pricing[purchasePrice]'] || payload['pricing[sellingPrice]']) {
-            payload.pricing = {
-                purchasePrice: Number(payload['pricing[purchasePrice]']) || 0,
-                sellingPrice: Number(payload['pricing[sellingPrice]']) || 0,
-            };
-        } else if (typeof payload.pricing === 'string') {
-            try {
-                payload.pricing = JSON.parse(payload.pricing);
-            } catch {
-                // keep as-is
+        let accessory = await Accessory.findById(id);
+        if (!accessory) throw new AppError("Accessory not found", 404);
+
+        /** -------------------------
+         * 1. Parse pricing + attributes
+         * ------------------------- */
+        const pricing = parsePricing(payload);
+        const attributes = parseAttributes(payload);
+
+        /** -------------------------
+         * 2. Compatibility parsing
+         * ------------------------- */
+        let compatibility = accessory.compatibility || [];
+
+        if (payload.compatibility) {
+            if (Array.isArray(payload.compatibility)) {
+                compatibility = payload.compatibility;
+            } else if (typeof payload.compatibility === "object") {
+                compatibility = Object.values(payload.compatibility);
+            } else if (typeof payload.compatibility === "string") {
+                try {
+                    compatibility = JSON.parse(payload.compatibility);
+                } catch {
+                    compatibility = [payload.compatibility];
+                }
             }
         }
 
-        // Handle Cloudinary image uploads
-        let newImages = req.files?.map(f => f.path) || [];
+        /** -------------------------
+         * 3. Handle images (Cloudinary)
+         * ------------------------- */
+        const newImages = req.files?.map(f => f.path) || [];
 
-        // Delete old Cloudinary images
-        if (accessory.images && accessory.images.length > 0) {
-            for (const url of accessory.images) {
-                await deleteImage(url);
-            }
-        }
-        // Assign new Cloudinary images
         if (newImages.length > 0) {
+            // delete old cloudinary images
+            if (Array.isArray(accessory.images)) {
+                for (const url of accessory.images) {
+                    await deleteImage(url); // assumes your function extracts public_id
+                }
+            }
             payload.images = newImages;
         }
 
+        /** -------------------------
+         * 4. Handle supplier update
+         * ------------------------- */
+        const oldSupplier = accessory.supplier;
+        const newSupplier = payload.supplier;
 
-        const accessory = await AccessoryService.updateAccessory(id, payload);
+        if (newSupplier && newSupplier !== oldSupplier?.toString()) {
+            // remove from old supplier
+            if (oldSupplier) {
+                await Supplier.findByIdAndUpdate(oldSupplier, {
+                    $pull: {
+                        suppliedProducts: { productId: accessory._id }
+                    }
+                });
+            }
+
+            // add to new supplier
+            await Supplier.findByIdAndUpdate(newSupplier, {
+                $addToSet: {
+                    suppliedProducts: {
+                        productId: accessory._id,
+                        modelType: "Accessory",
+                        lastRestockDate: new Date(),
+                    }
+                }
+            });
+        }
+
+        /** -------------------------
+         * 5. Prepare update payload
+         * ------------------------- */
+        const finalPayload = {
+            ...payload,
+            pricing,
+            attributes,
+            compatibility,
+        };
+
+        /** -------------------------
+         * 6. Update accessory
+         * ------------------------- */
+        const updated = await AccessoryService.updateAccessory(id, finalPayload);
+
         res.status(200).json({
             status: true,
-            message: 'Accessory updated successfully!',
-            data: accessory,
+            message: "Accessory updated successfully!",
+            data: updated,
         });
     }),
 
@@ -169,21 +222,15 @@ module.exports = {
         const accessory = await Accessory.findById(id);
         if (!accessory) return next(new AppError("Accessory not found", 404));
 
-        // Remove images from filesystem
+        // Delete Cloudinary images
         if (Array.isArray(accessory.images)) {
-            accessory.images.forEach(imgUrl => {
+            for (const imgUrl of accessory.images) {
                 try {
-                    const filename = imgUrl.split('/').pop(); // extract the filename
-                    const filePath = path.join(__dirname, '..', 'uploads', 'accessories', filename);
-
-                    if (fs.existsSync(filePath)) {
-                        fs.unlinkSync(filePath);
-                        console.log("Deleted:", filePath);
-                    }
+                    await deleteImage(imgUrl);
                 } catch (err) {
                     console.error("Failed to delete accessory image:", err);
                 }
-            });
+            }
         }
 
         await accessory.deleteOne();

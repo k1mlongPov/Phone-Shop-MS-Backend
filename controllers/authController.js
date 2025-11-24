@@ -1,6 +1,8 @@
 const asyncHandler = require('../utils/asyncHandler');
 const AppError = require('../utils/AppError');
 const authService = require('../services/authService');
+const jwt = require("jsonwebtoken");
+const User = require("../models/User");
 
 exports.register = asyncHandler(async (req, res) => {
     const { username, email, password } = req.body;
@@ -39,7 +41,7 @@ exports.refresh = asyncHandler(async (req, res) => {
         throw new AppError("No refresh token provided", 401);
     }
 
-    // Verify refresh token
+    // VERIFY refresh token
     let decoded;
     try {
         decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
@@ -47,20 +49,26 @@ exports.refresh = asyncHandler(async (req, res) => {
         throw new AppError("Invalid refresh token", 403);
     }
 
-    // Find user
+    // FIND USER + THEIR SAVED refresh token
     const user = await User.findById(decoded.id).select("+refreshToken");
-    if (!user || user.refreshToken !== refreshToken) {
+    if (!user) throw new AppError("User not found", 404);
+
+    if (user.refreshToken !== refreshToken) {
         throw new AppError("Refresh token not found or mismatch", 403);
     }
 
-    // Generate new access token
+    // ISSSUE NEW ACCESS TOKEN
     const newAccessToken = jwt.sign(
-        { id: user._id, roles: user.roles, email: user.email },
+        {
+            id: user._id,
+            roles: user.roles,
+            email: user.email
+        },
         process.env.JWT_SECRET,
         { expiresIn: process.env.JWT_EXPIRES_IN }
     );
 
-    return res.json({
+    res.json({
         success: true,
         accessToken: newAccessToken,
     });
