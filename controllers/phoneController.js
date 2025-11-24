@@ -249,20 +249,19 @@ module.exports = {
             images = newImages; // replace images
         }
 
-        payload.images = images;
+        // ❌ REMOVE THIS LINE — BROKEN
+        // payload.images = images;
 
         const newSupplier = body.supplier || null;
         const oldSupplier = phone.supplier?.toString();
 
         if (oldSupplier && oldSupplier !== newSupplier) {
-            // remove link from old supplier
             await Supplier.findByIdAndUpdate(oldSupplier, {
                 $pull: { suppliedProducts: { productId: phone._id } }
             });
         }
 
         if (newSupplier) {
-            // add/update link for new supplier
             await Supplier.findByIdAndUpdate(newSupplier, {
                 $addToSet: {
                     suppliedProducts: {
@@ -287,9 +286,6 @@ module.exports = {
             });
         }
 
-        // ------------------------------------------------
-        // UPDATE PHONE
-        // ------------------------------------------------
         const updated = await PhoneService.updatePhone(id, {
             brand: body.brand,
             model: body.model,
@@ -303,7 +299,7 @@ module.exports = {
             supplier: newSupplier,
             lowStockThreshold: Number(body.lowStockThreshold) || 5,
             isActive: body.isActive !== undefined ? Boolean(body.isActive) : phone.isActive,
-            images,
+            images,  // ✔ FINAL correct image value
         });
 
         res.json({
@@ -312,6 +308,7 @@ module.exports = {
             phone: updated,
         });
     }),
+
 
     deletePhone: async (req, res, next) => {
         const { id } = req.params;
