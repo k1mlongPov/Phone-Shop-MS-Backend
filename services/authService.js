@@ -33,15 +33,15 @@ async function register({ username, email, password }) {
         // capture result in `info` (if sendMail returns info)
         const info = await sendMail({
             to: user.email,
-            subject: 'Verify your account — Phone Shop',
+            subject: 'Verify your account — Vetheary Phone Shop',
             text: `Your verification code is ${otp}. It expires in ${OTP_TTL_MS / 60000} minutes.`,
             html: `<p>Your verification code is <b>${otp}</b>. It expires in ${OTP_TTL_MS / 60000} minutes.</p>`,
         });
+
         // debug: show mailer result (may be undefined depending on implementation)
         console.log('OTP email send info:', info);
     } catch (err) {
         console.error('Failed to send OTP email', err);
-        // do not throw here so registration remains successful, but log it
     }
 
     // remove sensitive fields before returning

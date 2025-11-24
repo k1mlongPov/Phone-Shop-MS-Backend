@@ -1,49 +1,34 @@
+const { Resend } = require('resend');
 
-const nodemailer = require('nodemailer');
+const resend = new Resend(process.env.RESEND_API_KEY);
 
-const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST || 'smtp.gmail.com',
-    port: Number(process.env.SMTP_PORT || 587),
-    secure: false, // STARTTLS
-    auth: {
-        user: process.env.GMAIL_USER,
-        pass: process.env.GMAIL_APP_PASSWORD, // Gmail App Password
-    },
-});
-
-// Always send from your Gmail address
 async function sendMail({ to, subject, text, html }) {
     const fromName = process.env.FROM_NAME || 'Vetheary';
-    const gmailAddress = process.env.GMAIL_USER;
-    const from = `"${fromName}" <${gmailAddress}>`;
+    const fromEmail = process.env.FROM_EMAIL || 'onboarding@resend.dev';
 
-    const info = await transporter.sendMail({
+    const from = `${fromName} <${fromEmail}>`;
+
+    const { data, error } = await resend.emails.send({
         from,
         to,
         subject,
-        text,
         html,
+        text,
     });
 
-    console.log('nodemailer sendMail info:', info && (info.messageId || info.response || info));
-    return info;
+    if (error) {
+        console.error('Resend sendMail error:', error);
+        throw error;
+    }
+
+    console.log('Resend email sent:', data);
+    return data;
 }
 
-exports.sendResetEmail = async (email, name, url) => {
-    const transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST,
-        port: 587,
-        secure: false,
-        auth: {
-            user: process.env.GMAIL_USER,
-            pass: process.env.GMAIL_APP_PASSWORD,
-        },
-    });
-
-    await transporter.sendMail({
-        from: `PhoneShop <${process.env.GMAIL_USER}>`,
+async function sendResetEmail(email, name, url) {
+    return sendMail({
         to: email,
-        subject: "Reset your password",
+        subject: 'Reset your password',
         html: `
       <p>Hello ${name},</p>
       <p>You requested to reset your password.</p>
@@ -51,7 +36,8 @@ exports.sendResetEmail = async (email, name, url) => {
       <a href="${url}">${url}</a>
       <p>This link expires in 1 hour.</p>
     `,
+        text: `Hello ${name}, reset your password here: ${url}`,
     });
-};
+}
 
-module.exports = { sendMail, transporter };
+module.exports = { sendMail, sendResetEmail };
