@@ -1,14 +1,13 @@
 const express = require('express');
 const router = express.Router();
-
 const accessoryCtrl = require('../controllers/accessoryController');
 const authMiddleware = require('../middleware/authMiddleware');
-const uploadAccessoryImages = require('../config/multerAccessory');
+const upload = require('../middleware/uploadMiddleware');
 
 router.post(
     '/',
     authMiddleware,
-    uploadAccessoryImages.array('images', 6),
+    upload.array('images', 5),
     accessoryCtrl.create
 );
 
@@ -19,7 +18,7 @@ router.get('/:id', authMiddleware, accessoryCtrl.get);
 router.put(
     '/:id',
     authMiddleware,
-    uploadAccessoryImages.array('images', 6),
+    upload.array('images', 5),
     accessoryCtrl.update
 );
 

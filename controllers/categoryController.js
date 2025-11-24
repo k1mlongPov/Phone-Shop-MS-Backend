@@ -1,5 +1,6 @@
 const asyncHandler = require('../utils/asyncHandler');
 const categoryService = require('../services/categoryService');
+const { deleteImage } = require('../utils/cloudinary');
 
 module.exports = {
 
@@ -8,7 +9,7 @@ module.exports = {
 
         // If image uploaded, attach URL
         if (req.file) {
-            payload.image = `${req.protocol}://${req.get('host')}/uploads/categories/${req.file.filename}`;
+            payload.image = req.file.path;   // Cloudinary URL
         }
 
         const category = await categoryService.create(payload);
@@ -37,9 +38,32 @@ module.exports = {
     }),
 
     update: asyncHandler(async (req, res) => {
-        const updated = await categoryService.update(req.params.id, req.body);
-        res.json({ success: true, data: updated });
+        const id = req.params.id;
+
+        // Fetch existing category
+        const existing = await categoryService.getById(id);
+        if (!existing) throw new AppError("Category not found", 404);
+
+        const payload = { ...req.body };
+
+        // If new image was uploaded → delete old Cloudinary image
+        if (req.file) {
+            // delete old image if exists
+            if (existing.image) {
+                await deleteImage(existing.image);  // Cloudinary delete function
+            }
+
+            // assign new Cloudinary URL
+            payload.image = req.file.path;
+        }
+        const updated = await categoryService.update(id, payload);
+
+        res.json({
+            success: true,
+            data: updated,
+        });
     }),
+
 
     delete: asyncHandler(async (req, res) => {
         await categoryService.delete(req.params.id);

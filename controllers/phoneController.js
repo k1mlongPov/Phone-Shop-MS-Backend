@@ -1,4 +1,3 @@
-
 const asyncHandler = require('../utils/asyncHandler');
 const AppError = require('../utils/AppError');
 const PhoneService = require('../services/phoneService');
@@ -6,9 +5,9 @@ const { PHONE_CONDITIONS } = require('../models/Phone');
 const Phone = require('../models/Phone');
 const path = require('path');
 const fs = require('fs');
-const uploadDir = path.join(__dirname, '..', 'uploads', 'phones');
 const stockService = require('../services/stockMovementService');
 const Supplier = require('../models/Supplier');
+const { deleteImage } = require('../utils/cloudinary');
 
 
 function parsePricing(data) {
@@ -153,7 +152,7 @@ module.exports = {
         const variants = parseVariants(data);
 
         const images = req.files?.length
-            ? req.files.map((f) => `${req.protocol}://${req.get('host')}/uploads/phones/${f.filename}`)
+            ? req.files.map(f => f.path)   // Cloudinary URL
             : [];
 
         const totalStock = Array.isArray(variants)
@@ -236,20 +235,21 @@ module.exports = {
             ? variants.reduce((s, v) => s + (Number(v.stock) || 0), 0)
             : phone.stock;
 
-        let images = phone.images;
+        // 1. Build new image URLs from Cloudinary
+        let newImages = req.files?.map(f => f.path) || [];
 
-        if (req.files?.length) {
-            // Delete old images
-            phone.images.forEach(imgUrl => {
-                const file = imgUrl.split('/').pop();
-                const filePath = path.join(uploadDir, file);
-                if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-            });
-
-            images = req.files.map(
-                f => `${req.protocol}://${req.get('host')}/uploads/phones/${f.filename}`
-            );
+        // 2. If new images were uploaded, delete old Cloudinary images
+        if (newImages.length > 0 && phone.images?.length > 0) {
+            for (const imgUrl of phone.images) {
+                await deleteImage(imgUrl);
+            }
         }
+
+        // 3. Only replace images if new ones were uploaded
+        if (newImages.length > 0) {
+            images = newImages;
+        }
+
 
         const newSupplier = body.supplier || null;
         const oldSupplier = phone.supplier?.toString();

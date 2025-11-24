@@ -3,11 +3,11 @@ const router = express.Router();
 
 const categoryCtrl = require('../controllers/categoryController');
 const authMiddleware = require('../middleware/authMiddleware');
-const uploadCategoryImage = require('../config/multerCategory');
+const upload = require('../middleware/uploadMiddleware');
 
 router.post('/',
     authMiddleware,
-    uploadCategoryImage.single('image'),
+    upload.single('image'),
     categoryCtrl.create
 );
 

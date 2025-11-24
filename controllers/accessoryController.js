@@ -7,6 +7,7 @@ const stockService = require('../services/stockMovementService');
 const Supplier = require('../models/Supplier');
 const fs = require('fs');
 const path = require('path');
+const { deleteImage } = require('../utils/cloudinary');
 
 function parsePricing(payload) {
     if (!payload) return { purchasePrice: 0, sellingPrice: 0 };
@@ -44,12 +45,10 @@ module.exports = {
         const pricing = parsePricing(payload);
         const attributes = parseAttributes(payload);
 
-        let images = [];
-        if (req.files?.length) {
-            images = req.files.map(
-                (file) => `${req.protocol}://${req.get('host')}/uploads/accessories/${file.filename}`
-            );
-        }
+        const images = req.files?.length
+            ? req.files.map((f) => f.path) // Cloudinary URL
+            : [];
+
 
         let compatibility = [];
         if (payload.compatibility) {
@@ -141,35 +140,20 @@ module.exports = {
             }
         }
 
-        // handle uploaded new images (replace if provided)
-        let newImages = [];
-        if (req.files && req.files.length > 0) {
-            newImages = req.files.map(
-                (file) =>
-                    `${req.protocol}://${req.get('host')}/uploads/accessories/${file.filename}`
-            );
-        }
+        // Handle Cloudinary image uploads
+        let newImages = req.files?.map(f => f.path) || [];
 
-        // if new images uploaded, delete old files (best-effort)
-        if (newImages.length > 0) {
-            try {
-                const existing = await AccessoryService.getAccessoryById(id);
-                if (existing && existing.images && existing.images.length > 0) {
-                    existing.images.forEach((img) => {
-                        try {
-                            const relativePath = img.replace(`${req.protocol}://${req.get('host')}/`, '');
-                            const filePath = path.join(__dirname, '..', relativePath);
-                            if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-                        } catch (e) {
-                            console.warn('Failed to delete old image:', e.message);
-                        }
-                    });
-                }
-            } catch (e) {
-                // ignore if fetching existing fails
+        // Delete old Cloudinary images
+        if (accessory.images && accessory.images.length > 0) {
+            for (const url of accessory.images) {
+                await deleteImage(url);
             }
+        }
+        // Assign new Cloudinary images
+        if (newImages.length > 0) {
             payload.images = newImages;
         }
+
 
         const accessory = await AccessoryService.updateAccessory(id, payload);
         res.status(200).json({

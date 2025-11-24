@@ -2,13 +2,13 @@ const express = require('express');
 const router = express.Router();
 const phoneCtrl = require('../controllers/phoneController');
 const authMiddleware = require('../middleware/authMiddleware');
-const uploadPhoneImages = require('../config/multerPhone');
+const upload = require('../middleware/uploadMiddleware');
 
 // Create phone (supports multiple images)
-router.post('/', authMiddleware, uploadPhoneImages.array('images', 8), phoneCtrl.createPhone);
+router.post('/', authMiddleware, upload.array('images', 5), phoneCtrl.createPhone);
 
 // Update phone (replace/add images)
-router.put('/:id', authMiddleware, uploadPhoneImages.array('images', 8), phoneCtrl.updatePhone);
+router.put('/:id', authMiddleware, upload.array('images', 5), phoneCtrl.updatePhone);
 
 // other routes...
 router.get('/', authMiddleware, phoneCtrl.listPhones);
