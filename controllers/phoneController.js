@@ -235,21 +235,21 @@ module.exports = {
             ? variants.reduce((s, v) => s + (Number(v.stock) || 0), 0)
             : phone.stock;
 
-        // 1. Build new image URLs from Cloudinary
+        let images = phone.images; // keep old images if none uploaded
+
         let newImages = req.files?.map(f => f.path) || [];
 
-        // 2. If new images were uploaded, delete old Cloudinary images
-        if (newImages.length > 0 && phone.images?.length > 0) {
-            for (const imgUrl of phone.images) {
-                await deleteImage(imgUrl);
-            }
-        }
-
-        // 3. Only replace images if new ones were uploaded
+        // If new images uploaded → delete old and replace
         if (newImages.length > 0) {
-            images = newImages;
+            if (phone.images && phone.images.length > 0) {
+                for (const oldUrl of phone.images) {
+                    await deleteImage(oldUrl);
+                }
+            }
+            images = newImages; // replace images
         }
 
+        payload.images = images;
 
         const newSupplier = body.supplier || null;
         const oldSupplier = phone.supplier?.toString();
