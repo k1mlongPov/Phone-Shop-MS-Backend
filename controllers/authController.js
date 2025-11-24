@@ -32,24 +32,38 @@ exports.login = asyncHandler(async (req, res) => {
     res.json({ success: true, ...result });
 });
 
-exports.requestReset = asyncHandler(async (req, res) => {
-    const { email, origin } = req.body;
-    if (!email) throw new AppError("Email required", 400);
+exports.refresh = asyncHandler(async (req, res) => {
+    const { refreshToken } = req.body;
 
-    await authService.requestPasswordReset({ email, origin });
+    if (!refreshToken) {
+        throw new AppError("No refresh token provided", 401);
+    }
 
-    res.json({
+    // Verify refresh token
+    let decoded;
+    try {
+        decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
+    } catch (e) {
+        throw new AppError("Invalid refresh token", 403);
+    }
+
+    // Find user
+    const user = await User.findById(decoded.id).select("+refreshToken");
+    if (!user || user.refreshToken !== refreshToken) {
+        throw new AppError("Refresh token not found or mismatch", 403);
+    }
+
+    // Generate new access token
+    const newAccessToken = jwt.sign(
+        { id: user._id, roles: user.roles, email: user.email },
+        process.env.JWT_SECRET,
+        { expiresIn: process.env.JWT_EXPIRES_IN }
+    );
+
+    return res.json({
         success: true,
-        message: "If that email exists, a reset link has been sent.",
+        accessToken: newAccessToken,
     });
-});
-
-exports.resetPassword = asyncHandler(async (req, res) => {
-    const { email, token, password } = req.body;
-
-    await authService.resetPassword({ email, token, password });
-
-    res.json({ success: true, message: "Password reset successful" });
 });
 
 exports.me = asyncHandler(async (req, res) => {

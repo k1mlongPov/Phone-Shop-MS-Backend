@@ -7,6 +7,7 @@ router.post('/register', authCtrl.register);
 router.post('/resend-otp', authCtrl.resendOtp);
 router.post('/verify', authCtrl.verify);
 router.post('/login', authCtrl.login);
+router.post('/refresh', authCtrl.refresh);
 router.get('/me', authMiddleware, authCtrl.me);
 
 module.exports = router;

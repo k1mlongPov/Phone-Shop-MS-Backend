@@ -123,73 +123,46 @@ async function verifyPublic({ email, otp }) {
 
 async function login({ email, password }) {
     const lowerEmail = email.toLowerCase();
-    // include password and roles in selection
     const user = await User.findOne({ email: lowerEmail }).select('+password +roles');
     if (!user) throw new AppError('Invalid credentials', 401);
 
     const match = await bcrypt.compare(password, user.password);
     if (!match) throw new AppError('Invalid credentials', 401);
 
-    // Normalize roles to lowercase for robust checks
-    const roles = Array.isArray(user.roles) ? user.roles.map(r => String(r).toLowerCase()) : [];
+    const roles = Array.isArray(user.roles)
+        ? user.roles.map(r => String(r).toLowerCase())
+        : [];
     const isAdmin = roles.includes('admin');
 
     if (!isAdmin) {
-        // Authenticated but not authorized
         throw new AppError('You do not have permission to access the admin panel', 403);
     }
 
-    // Create token with role claims (use normalized roles)
     const payload = { id: user._id, roles, email: user.email };
-    const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN });
+
+    // SHORT-LIVED ACCESS TOKEN (default: 15m)
+    const accessToken = jwt.sign(
+        payload,
+        process.env.JWT_SECRET,
+        { expiresIn: process.env.JWT_EXPIRES_IN }
+    );
+
+    // LONG-LIVED REFRESH TOKEN (default: 30d)
+    const refreshToken = jwt.sign(
+        { id: user._id },
+        process.env.JWT_REFRESH_SECRET,
+        { expiresIn: process.env.JWT_REFRESH_EXPIRES_IN }
+    );
+
+    // Save refresh token in DB
+    user.refreshToken = refreshToken;
+    await user.save();
 
     const safe = user.toObject();
     delete safe.password;
-    return { user: safe, token };
+
+    return { user: safe, accessToken, refreshToken };
 }
-
-exports.requestPasswordReset = async ({ email, origin }) => {
-    const user = await User.findOne({ email: email.toLowerCase() });
-
-    if (!user) {
-        // Prevent email enumeration
-        return;
-    }
-
-    // Create token
-    const rawToken = crypto.randomBytes(32).toString("hex");
-    const hashedToken = crypto.createHash("sha256").update(rawToken).digest("hex");
-
-    user.resetPasswordToken = hashedToken;
-    user.resetPasswordExpires = Date.now() + 1000 * 60 * 60; // 1 hour
-    await user.save();
-
-    const url = `${origin}/reset-password?token=${rawToken}&email=${encodeURIComponent(
-        user.email
-    )}`;
-
-    await sendResetEmail(user.email, user.username, url);
-};
-
-exports.resetPassword = async ({ email, token, password }) => {
-    const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
-
-    const user = await User.findOne({
-        email: email.toLowerCase(),
-        resetPasswordToken: hashedToken,
-        resetPasswordExpires: { $gt: Date.now() },
-    }).select("+password");
-
-    if (!user) {
-        throw new AppError("Invalid or expired token", 400);
-    }
-
-    user.password = password;
-    user.resetPasswordToken = null;
-    user.resetPasswordExpires = null;
-
-    await user.save();
-};
 
 async function me(userId) {
     const user = await User.findById(userId);
