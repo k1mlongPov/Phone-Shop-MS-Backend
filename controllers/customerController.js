@@ -1,24 +1,24 @@
-const asyncHandler = require('express-async-handler');
-const Customer = require('../models/Customer');
+const asyncHandler = require('../utils/asyncHandler');
+const customerService = require('../services/customerService');
 
-exports.createCustomer = asyncHandler(async (req, res) => {
-    const customer = await Customer.create(req.body);
-    res.status(201).json(customer);
+exports.create = asyncHandler(async (req, res) => {
+    const c = await customerService.create(req.body);
+    res.status(201).json({ success: true, customer: c });
 });
-
-exports.listCustomers = asyncHandler(async (req, res) => {
-    const customers = await Customer.find().populate('purchaseHistory.productId');
-    res.json(customers);
+exports.list = asyncHandler(async (req, res) => {
+    const p = Number(req.query.page) || 1, l = Number(req.query.limit) || 30;
+    const result = await customerService.list({}, { page: p, limit: l });
+    res.json({ success: true, ...result });
 });
-
-exports.updateCustomer = asyncHandler(async (req, res) => {
-    const customer = await Customer.findByIdAndUpdate(req.params.id, req.body, { new: true });
-    if (!customer) return res.status(404).json({ message: 'Customer not found' });
-    res.json(customer);
+exports.get = asyncHandler(async (req, res) => {
+    const c = await customerService.getById(req.params.id);
+    res.json({ success: true, customer: c });
 });
-
-exports.deleteCustomer = asyncHandler(async (req, res) => {
-    const deleted = await Customer.findByIdAndDelete(req.params.id);
-    if (!deleted) return res.status(404).json({ message: 'Customer not found' });
-    res.json({ message: 'Customer deleted' });
+exports.update = asyncHandler(async (req, res) => {
+    const c = await customerService.update(req.params.id, req.body);
+    res.json({ success: true, customer: c });
+});
+exports.delete = asyncHandler(async (req, res) => {
+    await customerService.remove(req.params.id);
+    res.json({ success: true });
 });

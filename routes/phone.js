@@ -1,30 +1,19 @@
 const express = require('express');
 const router = express.Router();
-const phoneController = require('../controllers/phoneController');
-const multer = require('multer');
-const path = require('path');
+const phoneCtrl = require('../controllers/phoneController');
+const authMiddleware = require('../middleware/authMiddleware');
+const uploadPhoneImages = require('../config/multerPhone');
 
-// --- Multer setup ---
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        cb(null, path.join(__dirname, '../uploads/phones'));
-    },
-    filename: (req, file, cb) => {
-        const uniqueName = `${Date.now()}-${file.originalname}`;
-        cb(null, uniqueName);
-    },
-});
+// Create phone (supports multiple images)
+router.post('/', authMiddleware, uploadPhoneImages.array('images', 8), phoneCtrl.createPhone);
 
-const upload = multer({ storage });
+// Update phone (replace/add images)
+router.put('/:id', authMiddleware, uploadPhoneImages.array('images', 8), phoneCtrl.updatePhone);
 
-router.post('/', upload.array('images', 10), phoneController.createPhone);
-
-router.put('/update/:id', upload.array('images', 10), phoneController.updatePhone);
-
-router.delete('/delete/:id', phoneController.deletePhone);
-
-router.get('/', phoneController.listPhones);
-
-router.get('/byId/:id', phoneController.getPhoneById);
+// other routes...
+router.get('/', authMiddleware, phoneCtrl.listPhones);
+router.get('/:id', authMiddleware, phoneCtrl.getPhoneById);
+router.delete('/:id', authMiddleware, phoneCtrl.deletePhone);
+router.post('/:id/restock', authMiddleware, phoneCtrl.adjustStock);
 
 module.exports = router;

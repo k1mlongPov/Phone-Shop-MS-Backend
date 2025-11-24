@@ -1,17 +1,24 @@
 const express = require('express');
 const router = express.Router();
-const categoryController = require('../controllers/categoryController');
 
-router.post('/', categoryController.createCategory);
+const categoryCtrl = require('../controllers/categoryController');
+const authMiddleware = require('../middleware/authMiddleware');
+const uploadCategoryImage = require('../config/multerCategory');
 
-router.get('/', categoryController.getCategories);
+router.post('/',
+    authMiddleware,
+    uploadCategoryImage.single('image'),
+    categoryCtrl.create
+);
 
-router.get('/:id/subcategories', categoryController.getSubcategories);
+router.get('/', authMiddleware, categoryCtrl.getRoot);
 
-router.get('/subcategories', categoryController.listSubcategories);
+router.get('/sub', authMiddleware, categoryCtrl.listSubcategories);
 
-router.put('/update/:id', categoryController.updateCategory);
+router.get('/sub/:id', authMiddleware, categoryCtrl.getByParent);
 
-router.delete('/delete/:id', categoryController.deleteCategory);
+router.put('/:id', authMiddleware, categoryCtrl.update);
+
+router.delete('/:id', authMiddleware, categoryCtrl.delete);
 
 module.exports = router;

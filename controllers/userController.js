@@ -1,82 +1,24 @@
-const User = require("../models/User");
+const asyncHandler = require('../utils/asyncHandler');
+const userService = require('../services/userService');
 
-module.exports = {
-    getUser: async (req, res) => {
-        try {
-            const user = await User.findById(req.user.id);
+exports.list = asyncHandler(async (req, res) => {
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 20;
+    const result = await userService.list({}, { page, limit });
+    res.json({ success: true, ...result });
+});
 
-            if (!user) {
-                return res.status(404).json({ status: false, message: "User not found" });
-            }
+exports.get = asyncHandler(async (req, res) => {
+    const user = await userService.getById(req.params.id);
+    res.json({ success: true, user });
+});
 
-            const { password, __v, createdAt, ...userData } = user._doc;
-            res.status(200).json({ status: true, user: userData });
+exports.update = asyncHandler(async (req, res) => {
+    const user = await userService.update(req.params.id, req.body);
+    res.json({ success: true, user });
+});
 
-        } catch (error) {
-            res.status(500).json({ status: false, message: error.message });
-        }
-    },
-
-    verifyAccount: async (req, res) => {
-        const userOtp = req.params.otp;
-
-        try {
-            const user = await User.findById(req.user.id);
-
-            if (!user) {
-                return res.status(404).json({ status: false, message: "User not found" });
-            }
-
-            if (String(userOtp) === String(user.otp)) {
-                user.verification = true;
-                user.otp = null;
-
-                await user.save();
-
-                const { password, otp, __v, createdAt, ...others } = user._doc;
-                return res.status(200).json({ status: true, user: others });
-            } else {
-                return res.status(400).json({ status: false, message: "Invalid OTP" });
-            }
-        } catch (error) {
-            return res.status(500).json({ status: false, message: error.message });
-        }
-    },
-
-    verifyPhone: async (req, res) => {
-        const phone = req.params.phone;
-
-        try {
-            const user = await User.findById(req.user.id);
-
-            if (!user) {
-                return res.status(404).json({ status: false, message: "User not found" });
-            }
-
-            user.phoneVerification = true;
-            user.phone = phone;
-
-            await user.save();
-
-            const { password, otp, __v, createdAt, ...others } = user._doc;
-            return res.status(200).json({ status: true, user: others });
-        } catch (error) {
-            return res.status(500).json({ status: false, message: error.message });
-        }
-    },
-
-    deleteUser: async (req, res) => {
-        try {
-            const user = await User.findByIdAndDelete(req.user.id);
-
-            if (!user) {
-                return res.status(404).json({ status: false, message: "User not found" });
-            }
-
-            res.status(200).json({ status: true, message: "User deleted successfully" });
-
-        } catch (error) {
-            res.status(500).json({ status: false, message: error.message });
-        }
-    },
-};
+exports.delete = asyncHandler(async (req, res) => {
+    await userService.remove(req.params.id);
+    res.json({ success: true });
+});

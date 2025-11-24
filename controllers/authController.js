@@ -1,84 +1,60 @@
-const User = require("../models/User");
-const CryptoJS = require("crypto-js");
-const jwt = require("jsonwebtoken");
-const generateOtp = require("../utils/otp_generator");
-const sendMail = require("../utils/smtp_function");
+const asyncHandler = require('../utils/asyncHandler');
+const AppError = require('../utils/AppError');
+const authService = require('../services/authService');
 
-module.exports = {
-    createUser: async (req, res) => {
-        const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+exports.register = asyncHandler(async (req, res) => {
+    const { username, email, password } = req.body;
+    if (!username || !email || !password) throw new AppError('username/email/password required', 400);
 
-        if (!emailRegex.test(req.body.email)) {
-            return res.status(400).json({ status: false, message: "Email is not valid" });
-        }
+    const user = await authService.register({ username, email, password });
+    res.status(201).json({ success: true, user, message: 'Registered — OTP sent' });
+});
 
-        const minPasswordLength = 8;
-        if (req.body.password.length < minPasswordLength) {
-            return res.status(400).json({ status: false, message: `Password should be at least ${minPasswordLength} characters long` });
-        }
+exports.resendOtp = asyncHandler(async (req, res) => {
+    const { email } = req.body;
+    if (!email) throw new AppError('Email required', 400);
+    const result = await authService.resendOtp({ email });
+    res.json({ success: true, ...result });
+});
 
-        try {
-            const emailExist = await User.findOne({ email: req.body.email });
-            if (emailExist) {
-                return res.status(400).json({ status: false, message: "Email already exists" });
-            }
+exports.verify = asyncHandler(async (req, res) => {
+    const { email, otp } = req.body;
+    if (!email || !otp) throw new AppError('Email and OTP required', 400);
+    const user = await authService.verifyPublic({ email, otp });
+    res.json({ success: true, user });
+});
 
-            const otp = generateOtp();
+exports.login = asyncHandler(async (req, res) => {
+    const { email, password } = req.body;
+    if (!email || !password) throw new AppError('Email and password required', 400);
+    const result = await authService.login({ email, password });
+    // result: { user, token }
+    res.json({ success: true, ...result });
+});
 
-            const newUser = new User({
-                username: req.body.username,
-                email: req.body.email,
-                userType: "Customer",
-                password: CryptoJS.AES.encrypt(req.body.password, process.env.SECRET).toString(),
-                otp: otp,
-            });
+exports.requestReset = asyncHandler(async (req, res) => {
+    const { email, origin } = req.body;
+    if (!email) throw new AppError("Email required", 400);
 
-            await newUser.save();
-            sendMail(newUser.email, otp);
+    await authService.requestPasswordReset({ email, origin });
 
-            res.status(201).json({ status: true, message: "User successfully created" });
+    res.json({
+        success: true,
+        message: "If that email exists, a reset link has been sent.",
+    });
+});
 
-        } catch (error) {
-            res.status(500).json({ status: false, message: error.message });
-        }
-    },
+exports.resetPassword = asyncHandler(async (req, res) => {
+    const { email, token, password } = req.body;
 
-    loginUser: async (req, res) => {
-        const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    await authService.resetPassword({ email, token, password });
 
-        if (!emailRegex.test(req.body.email)) {
-            return res.status(400).json({ status: false, message: "Email is not valid" });
-        }
+    res.json({ success: true, message: "Password reset successful" });
+});
 
-        const minPasswordLength = 8;
-        if (req.body.password.length < minPasswordLength) {
-            return res.status(400).json({ status: false, message: `Password should be at least ${minPasswordLength} characters long` });
-        }
-
-        try {
-            const user = await User.findOne({ email: req.body.email });
-            if (!user) {
-                return res.status(400).json({ status: false, message: "User not found" });
-            }
-
-            const decryptedPassword = CryptoJS.AES.decrypt(user.password, process.env.SECRET);
-            const depassword = decryptedPassword.toString(CryptoJS.enc.Utf8);
-
-            if (depassword !== req.body.password) {
-                return res.status(400).json({ status: false, message: "Wrong password" });
-            }
-
-            const userToken = jwt.sign({
-                id: user._id,
-                userType: user.userType,
-                email: user.email,
-            }, process.env.JWT_SECRET, { expiresIn: "21d" });
-
-            const { password, __v, otp, ...others } = user._doc;
-            res.status(200).json({ status: true, user: others, userToken });
-
-        } catch (error) {
-            res.status(500).json({ status: false, message: error.message });
-        }
-    }
-};
+exports.me = asyncHandler(async (req, res) => {
+    // auth middleware must set req.user.id
+    if (!req.user || !req.user.id) throw new AppError('Unauthorized', 401);
+    const user = await authService.me(req.user.id);
+    res.json({ success: true, user });
+});

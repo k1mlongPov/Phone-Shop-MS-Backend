@@ -1,37 +1,48 @@
-const asyncHandler = require('express-async-handler');
-const Category = require('../models/Category');
+const asyncHandler = require('../utils/asyncHandler');
+const categoryService = require('../services/categoryService');
+
+module.exports = {
+
+    create: asyncHandler(async (req, res) => {
+        const payload = req.body || {};
+
+        // If image uploaded, attach URL
+        if (req.file) {
+            payload.image = `${req.protocol}://${req.get('host')}/uploads/categories/${req.file.filename}`;
+        }
+
+        const category = await categoryService.create(payload);
+
+        res.status(201).json({
+            success: true,
+            data: category,
+        });
+    }),
 
 
+    getRoot: asyncHandler(async (req, res) => {
+        const categories = await categoryService.getRootCategories();
+        res.json({ success: true, data: categories });
+    }),
 
-exports.createCategory = asyncHandler(async (req, res) => {
-    const category = await Category.create(req.body);
-    res.status(201).json(category);
-});
+    listSubcategories: asyncHandler(async (req, res) => {
+        const subcategories = await categoryService.listAllSubcategories();
+        res.json({ success: true, data: subcategories });
+    }),
 
-exports.getCategories = async (req, res) => {
-    const categories = await Category.find({ parent: null }).lean();
-    res.json(categories);
+    getByParent: asyncHandler(async (req, res) => {
+        const parentId = req.params.id;
+        const subcategories = await categoryService.getSubcategoriesByParent(parentId);
+        res.json({ success: true, data: subcategories });
+    }),
+
+    update: asyncHandler(async (req, res) => {
+        const updated = await categoryService.update(req.params.id, req.body);
+        res.json({ success: true, data: updated });
+    }),
+
+    delete: asyncHandler(async (req, res) => {
+        await categoryService.delete(req.params.id);
+        res.json({ success: true, message: 'Category deleted' });
+    })
 };
-
-exports.listSubcategories = asyncHandler(async (req, res) => {
-    const subcategories = await Category.find({ parent: { $ne: null } });
-    res.status(200).json(subcategories);
-});
-
-exports.getSubcategories = async (req, res) => {
-    const subcategories = await Category.find({ parent: req.params.id }).lean();
-    res.json(subcategories);
-};
-// Update category
-exports.updateCategory = asyncHandler(async (req, res) => {
-    const category = await Category.findByIdAndUpdate(req.params.id, req.body, { new: true });
-    if (!category) return res.status(404).json({ message: 'Category not found' });
-    res.json(category);
-});
-
-// Delete category
-exports.deleteCategory = asyncHandler(async (req, res) => {
-    const deleted = await Category.findByIdAndDelete(req.params.id);
-    if (!deleted) return res.status(404).json({ message: 'Category not found' });
-    res.json({ message: 'Category deleted' });
-});

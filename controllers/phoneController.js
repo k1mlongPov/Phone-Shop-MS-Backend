@@ -1,374 +1,356 @@
-const asyncHandler = require('express-async-handler');
+
+const asyncHandler = require('../utils/asyncHandler');
+const AppError = require('../utils/AppError');
+const PhoneService = require('../services/phoneService');
+const { PHONE_CONDITIONS } = require('../models/Phone');
 const Phone = require('../models/Phone');
-const mongoose = require('mongoose');
-const fs = require('fs');
 const path = require('path');
+const fs = require('fs');
+const uploadDir = path.join(__dirname, '..', 'uploads', 'phones');
+const stockService = require('../services/stockMovementService');
+const Supplier = require('../models/Supplier');
+
+
+function parsePricing(data) {
+    let pricing = { purchasePrice: 0, sellingPrice: 0 };
+    if (data.pricing && typeof data.pricing === 'object') {
+        pricing = {
+            purchasePrice: Number(data.pricing.purchasePrice) || 0,
+            sellingPrice: Number(data.pricing.sellingPrice) || 0,
+        };
+    } else if (data['pricing[purchasePrice]'] || data['pricing[sellingPrice]']) {
+        pricing = {
+            purchasePrice: Number(data['pricing[purchasePrice]']) || 0,
+            sellingPrice: Number(data['pricing[sellingPrice]']) || 0,
+        };
+    }
+    return pricing;
+}
+
+function parseSpecs(data) {
+    let specs = {};
+    if (data.specs && typeof data.specs === 'object') {
+        specs = { ...data.specs };
+        if (specs.ram) specs.ram = Number(specs.ram);
+        if (specs.storage) specs.storage = Number(specs.storage);
+        if (specs.display) {
+            if (specs.display.sizeIn) specs.display.sizeIn = Number(specs.display.sizeIn);
+            if (specs.display.refreshRate) specs.display.refreshRate = Number(specs.display.refreshRate);
+        }
+    } else {
+        Object.keys(data).forEach((key) => {
+            if (key.startsWith('specs[')) {
+                const match = key.match(/specs\[(.+?)\](?:\[(.+?)\])?(?:\[(.+?)\])?/);
+                if (match) {
+                    const [, a, b, c] = match;
+                    if (b && c) {
+                        specs[a] ??= {};
+                        specs[a][b] ??= {};
+                        specs[a][b][c] = data[key];
+                    } else if (b) {
+                        specs[a] ??= {};
+                        specs[a][b] = data[key];
+                    } else {
+                        specs[a] = data[key];
+                    }
+                }
+            }
+        });
+
+        if (specs.ram) specs.ram = Number(specs.ram);
+        if (specs.storage) specs.storage = Number(specs.storage);
+    }
+    return specs;
+}
+
+function normalizeCondition(val) {
+    if (!val) return 'new_company'; // default
+
+    const s = String(val).toLowerCase().trim();
+
+    // Allow some friendly aliases from frontend (if you want)
+    if (s === 'used_from_customer' || s === 'used_local' || s === 'local_used') {
+        return 'used_local';
+    }
+    if (s === 'new_company' || s === 'brand_new' || s === 'new_from_company') {
+        return 'new_company';
+    }
+    if (s === 'new_import' || s === 'import_new' || s === 'new_from_outside') {
+        return 'new_import';
+    }
+
+    // fallback: if client sends exact enum
+    if (PHONE_CONDITIONS.includes(s)) return s;
+
+    // final fallback
+    return 'new_company';
+}
+
+function parseVariants(data) {
+    let variants = [];
+
+    // Case 1: Client sends array of variants
+    if (Array.isArray(data.variants)) {
+        variants = data.variants.map((v) => ({
+            storage: v.storage,
+            color: v.color,
+            condition: normalizeCondition(v.condition),
+            pricing: {
+                purchasePrice: Number(v.pricing?.purchasePrice) || 0,
+                sellingPrice: Number(v.pricing?.sellingPrice) || 0,
+            },
+            stock: Number(v.stock) || 0,
+            sku: v.sku || undefined,
+        }));
+    } else {
+        // Case 2: Flat form-data: variants[0][storage], variants[0][condition], ...
+        Object.keys(data).forEach((key) => {
+            const match = key.match(/^variants\[(\d+)\]\[(.+?)\](?:\[(.+?)\])?/);
+            if (match) {
+                const [, index, field, subField] = match;
+                const i = parseInt(index, 10);
+                variants[i] ??= { pricing: {} };
+
+                if (subField) {
+                    variants[i][field] ??= {};
+                    variants[i][field][subField] = isNaN(Number(data[key]))
+                        ? data[key]
+                        : Number(data[key]);
+                } else {
+                    variants[i][field] = isNaN(Number(data[key]))
+                        ? data[key]
+                        : Number(data[key]);
+                }
+            }
+        });
+
+        variants = variants
+            .filter(Boolean)
+            .map((v) => ({
+                storage: v.storage,
+                color: v.color,
+                condition: normalizeCondition(v.condition),
+                pricing: {
+                    purchasePrice: Number(v.pricing?.purchasePrice) || 0,
+                    sellingPrice: Number(v.pricing?.sellingPrice) || 0,
+                },
+                stock: Number(v.stock) || 0,
+                sku: v.sku || undefined,
+            }));
+    }
+
+    return variants;
+}
 
 module.exports = {
     createPhone: asyncHandler(async (req, res) => {
-        try {
-            const data = req.body;
-            console.log("Incoming body:", data);
+        const data = req.body || {};
+        if (!data.brand || !data.model)
+            throw new AppError('brand and model are required', 400);
 
-            // ✅ Step 1: Build pricing (smart handling)
-            let pricing = { purchasePrice: 0, sellingPrice: 0 };
+        const pricing = parsePricing(data);
+        const specs = parseSpecs(data);
+        const variants = parseVariants(data);
 
-            if (data.pricing && typeof data.pricing === 'object') {
-                // Parsed nested object case
-                pricing = {
-                    purchasePrice: Number(data.pricing.purchasePrice) || 0,
-                    sellingPrice: Number(data.pricing.sellingPrice) || 0,
-                };
-            } else if (data['pricing[purchasePrice]'] || data['pricing[sellingPrice]']) {
-                // Flattened field case
-                pricing = {
-                    purchasePrice: Number(data['pricing[purchasePrice]']) || 0,
-                    sellingPrice: Number(data['pricing[sellingPrice]']) || 0,
-                };
-            }
+        const images = req.files?.length
+            ? req.files.map((f) => `${req.protocol}://${req.get('host')}/uploads/phones/${f.filename}`)
+            : [];
 
-            // ✅ Step 2: Specs
-            let specs = {};
-            if (data.specs && typeof data.specs === 'object') {
-                specs = {
-                    os: data.specs.os || '',
-                    chipset: data.specs.chipset || '',
-                    batteryHealth: Number(data.specs.batteryHealth) || null,
-                };
-            } else {
-                specs = {
-                    os: data['specs[os]'] || '',
-                    chipset: data['specs[chipset]'] || '',
-                    batteryHealth: Number(data['specs[batteryHealth]']) || null,
-                };
-            }
+        const totalStock = Array.isArray(variants)
+            ? variants.reduce((sum, v) => sum + (Number(v.stock) || 0), 0)
+            : 0;
 
-            // ✅ Step 3: Variants (smart parse)
-            let variants = [];
-            if (Array.isArray(data.variants)) {
-                variants = data.variants.map((v) => ({
-                    storage: v.storage,
-                    color: v.color,
-                    pricing: {
-                        purchasePrice: Number(v.pricing?.purchasePrice) || 0,
-                        sellingPrice: Number(v.pricing?.sellingPrice) || 0,
-                    },
-                    stock: Number(v.stock) || 0,
-                }));
-            } else {
-                // If flat fields
-                Object.keys(data).forEach((key) => {
-                    const match = key.match(/^variants\[(\d+)\]\[(.+)\]$/);
-                    if (match) {
-                        const index = match[1];
-                        const field = match[2];
+        const phoneData = {
+            brand: data.brand,
+            model: data.model,
+            slug: (data.brand + "-" + data.model).toLowerCase(),
+            pricing,
+            currency: data.currency || 'USD',
+            specs,
+            variants,
+            category: data.category || undefined,
+            supplier: data.supplier || undefined,
+            stock: totalStock,
+            lowStockThreshold: Number(data.lowStockThreshold) || 5,
+            images,
+            sku: data.sku || undefined,
+            isActive: data.isActive !== undefined ? Boolean(data.isActive) : true,
+        };
 
-                        if (!variants[index]) variants[index] = { pricing: {} };
+        const phone = await PhoneService.createPhone(phoneData);
 
-                        if (field.startsWith("pricing")) {
-                            const priceField = field.match(/pricing\]\[(.+)\]/)[1];
-                            variants[index].pricing[priceField] = Number(data[key]) || 0;
-                        } else {
-                            variants[index][field] = isNaN(Number(data[key]))
-                                ? data[key]
-                                : Number(data[key]);
+        await stockService.createMovement({
+            productId: phone._id,
+            modelType: 'Phone',
+            type: 'initial',
+            quantity: totalStock,
+            reference: 'product_create',
+            referenceId: phone._id,
+            handledBy: req.user?.id,
+            note: 'Initial stock on creation',
+        });
+
+        if (phone.supplier) {
+            await Supplier.findByIdAndUpdate(
+                phone.supplier,
+                {
+                    $addToSet: {
+                        suppliedProducts: {
+                            productId: phone._id,
+                            modelType: 'Phone',
+                            lastRestockDate: new Date(),
                         }
                     }
-                });
-            }
-
-            // ✅ Step 4: Build phone data
-            const phoneData = {
-                brand: data.brand,
-                model: data.model,
-                slug: data.slug || `${data.brand}-${data.model}`.toLowerCase(),
-                pricing,
-                specs,
-                category: data.category,
-                supplier: data.supplier,
-                stock: Number(data.stock) || 0,
-                lowStockThreshold: Number(data.lowStockThreshold) || 5,
-                variants,
-                images: req.files
-                    ? req.files.map(
-                        (f) => `${req.protocol}://${req.get('host')}/uploads/phones/${f.filename}`
-                    )
-                    : [],
-
-            };
-
-            console.log("🧩 Final phoneData:", phoneData);
-
-            // ✅ Step 5: Save
-            const phone = await Phone.create(phoneData);
-            res.status(201).json(phone);
-        } catch (err) {
-            console.error("❌ Create phone error:", err);
-            res.status(500).json({ message: err.message });
+                }
+            );
         }
+        res.status(201).json({ success: true, phone });
     }),
 
+
+
     listPhones: asyncHandler(async (req, res) => {
-        const {
-            page = 1,
-            limit = 12,
-            brand,
-            category,
-            minPrice,
-            maxPrice,
-            q,
-            sort,
-        } = req.query;
-
-        const skip = (page - 1) * limit;
-        const filter = {};
-
-        if (brand) filter.brand = brand;
-
-        if (category) {
-            if (mongoose.Types.ObjectId.isValid(category)) {
-                filter.category = category;
-            } else {
-                filter['category.name'] = { $regex: category, $options: 'i' };
-            }
-        }
-
-        if (minPrice || maxPrice) {
-            filter.$or = [
-                { 'pricing.sellingPrice': {} },
-                { 'variants.pricing.sellingPrice': {} },
-            ];
-            if (minPrice) {
-                filter.$or[0]['pricing.sellingPrice'].$gte = Number(minPrice);
-                filter.$or[1]['variants.pricing.sellingPrice'].$gte = Number(minPrice);
-            }
-            if (maxPrice) {
-                filter.$or[0]['pricing.sellingPrice'].$lte = Number(maxPrice);
-                filter.$or[1]['variants.pricing.sellingPrice'].$lte = Number(maxPrice);
-            }
-        }
-
-        let searchQuery = { ...filter };
-        if (q && q.trim() !== '') {
-            const regex = new RegExp(q.trim(), 'i');
-            searchQuery.$or = [
-                { brand: regex },
-                { model: regex },
-                { 'specs.os': regex },
-                { 'variants.storage': regex },
-            ];
-        }
-
-        let query = Phone.find(searchQuery).populate('category').populate('supplier');
-
-        if (sort) {
-            const sortOptions = {
-                name: { brand: 1, model: 1 },
-                price_asc: { 'pricing.sellingPrice': 1 },
-                price_desc: { 'pricing.sellingPrice': -1 },
-                stock_asc: { stock: 1 },
-                stock_desc: { stock: -1 },
-                latest: { createdAt: -1 },
-                oldest: { createdAt: 1 },
-            };
-            query = query.sort(sortOptions[sort] || {});
-        }
-
-        const [total, phones] = await Promise.all([
-            Phone.countDocuments(searchQuery),
-            query.skip(skip).limit(Number(limit)),
-        ]);
-
-        res.status(200).json({
-            status: true,
-            page: Number(page),
-            limit: Number(limit),
-            total,
-            pages: Math.ceil(total / limit),
-            data: phones,
-        });
+        // forward query params directly; service validates/uses them
+        const result = await PhoneService.listPhones(req.query);
+        res.json({ success: true, ...result });
     }),
 
     getPhoneById: asyncHandler(async (req, res) => {
-        const phone = await Phone.findById(req.params.id)
-            .populate('category')
-            .populate('supplier');
-        if (!phone) return res.status(404).json({ message: 'Phone not found' });
-        res.status(200).json(phone);
+        const { id } = req.params;
+        const phone = await PhoneService.getPhoneById(id);
+        res.json({ success: true, phone });
     }),
 
     updatePhone: asyncHandler(async (req, res) => {
-        try {
-            const { id } = req.params;
-            const data = req.body;
+        const { id } = req.params;
+        const body = req.body || {};
 
-            const existingPhone = await Phone.findById(id);
-            if (!existingPhone) {
-                return res.status(404).json({ message: 'Phone not found' });
-            }
+        const phone = await Phone.findById(id);
+        if (!phone) throw new AppError("Phone not found", 404);
 
-            // ✅ Smart parse pricing (works for both nested or flat data)
-            let pricing = existingPhone.pricing;
-            if (data.pricing && typeof data.pricing === 'object') {
-                pricing = {
-                    purchasePrice: Number(data.pricing.purchasePrice) || 0,
-                    sellingPrice: Number(data.pricing.sellingPrice) || 0,
-                };
-            } else if (data['pricing[purchasePrice]'] || data['pricing[sellingPrice]']) {
-                pricing = {
-                    purchasePrice: Number(data['pricing[purchasePrice]']) || 0,
-                    sellingPrice: Number(data['pricing[sellingPrice]']) || 0,
-                };
-            }
+        const pricing = parsePricing(body);
+        const specs = parseSpecs(body);
+        const variants = parseVariants(body);
 
-            // ✅ Parse specs (supports nested or bracketed)
-            let specs = {};
-            if (data.specs && typeof data.specs === 'object') {
-                specs = {
-                    os: data.specs.os || '',
-                    chipset: data.specs.chipset || '',
-                    batteryHealth: Number(data.specs.batteryHealth) || null,
-                };
-            } else {
-                for (const key in data) {
-                    if (key.startsWith('specs[')) {
-                        const match = key.match(/specs\[(.+?)\](?:\[(.+?)\])?/);
-                        if (match) {
-                            const [, parent, child] = match;
-                            if (child) {
-                                specs[parent] ??= {};
-                                specs[parent][child] = data[key];
-                            } else {
-                                specs[parent] = data[key];
-                            }
-                        }
-                    }
-                }
-                if (data['specs[batteryHealth]']) {
-                    specs.batteryHealth = Number(data['specs[batteryHealth]']);
-                }
-            }
+        const newTotalStock = Array.isArray(variants)
+            ? variants.reduce((s, v) => s + (Number(v.stock) || 0), 0)
+            : phone.stock;
 
-            // ✅ Parse variants (smart)
-            let variants = [];
-            if (Array.isArray(data.variants)) {
-                variants = data.variants.map((v) => ({
-                    storage: v.storage,
-                    color: v.color,
-                    pricing: {
-                        purchasePrice: Number(v.pricing?.purchasePrice) || 0,
-                        sellingPrice: Number(v.pricing?.sellingPrice) || 0,
-                    },
-                    stock: Number(v.stock) || 0,
-                }));
-            } else {
-                Object.keys(data).forEach((key) => {
-                    const match = key.match(/^variants\[(\d+)\]\[(.+?)\](?:\[(.+?)\])?/);
-                    if (match) {
-                        const [_, index, field, subField] = match;
-                        const i = parseInt(index, 10);
-                        variants[i] ??= { pricing: {} };
+        let images = phone.images;
 
-                        if (subField) {
-                            variants[i][field] ??= {};
-                            variants[i][field][subField] = Number(data[key]) || 0;
-                        } else {
-                            variants[i][field] =
-                                isNaN(Number(data[key])) ? data[key] : Number(data[key]);
-                        }
-                    }
-                });
-            }
-
-            // ✅ Handle image uploads
-            let newImages = existingPhone.images;
-            if (req.files && req.files.length > 0) {
-                newImages = req.files.map(
-                    (file) =>
-                        `${req.protocol}://${req.get('host')}/uploads/phones/${file.filename}`
-                );
-            }
-
-            // ✅ Build update data
-            const updatedData = {
-                brand: data.brand || existingPhone.brand,
-                model: data.model || existingPhone.model,
-                slug:
-                    data.slug && data.slug.trim() !== ''
-                        ? data.slug
-                        : `${data.brand}-${data.model}`.toLowerCase(),
-                pricing,
-                specs,
-                category: data.category || existingPhone.category,
-                supplier: data.supplier || existingPhone.supplier,
-                stock: Number(data.stock) || existingPhone.stock,
-                lowStockThreshold:
-                    Number(data.lowStockThreshold) || existingPhone.lowStockThreshold,
-                variants,
-                images: newImages,
-            };
-
-            // ✅ Save update
-            const updatedPhone = await Phone.findByIdAndUpdate(id, updatedData, {
-                new: true,
+        if (req.files?.length) {
+            // Delete old images
+            phone.images.forEach(imgUrl => {
+                const file = imgUrl.split('/').pop();
+                const filePath = path.join(uploadDir, file);
+                if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
             });
 
-            res.status(200).json(updatedPhone);
-        } catch (error) {
-            console.error('❌ Update phone error:', error);
-            res.status(500).json({
-                message: error.message || 'Failed to update phone.',
+            images = req.files.map(
+                f => `${req.protocol}://${req.get('host')}/uploads/phones/${f.filename}`
+            );
+        }
+
+        const newSupplier = body.supplier || null;
+        const oldSupplier = phone.supplier?.toString();
+
+        if (oldSupplier && oldSupplier !== newSupplier) {
+            // remove link from old supplier
+            await Supplier.findByIdAndUpdate(oldSupplier, {
+                $pull: { suppliedProducts: { productId: phone._id } }
             });
         }
-    }),
 
-    deletePhone: asyncHandler(async (req, res) => {
-        try {
-            const { id } = req.params;
-            const phone = await Phone.findById(id);
-
-            if (!phone) {
-                return res.status(404).json({ message: "Phone not found" });
-            }
-
-            // ✅ Extract local file paths from the URLs
-            if (phone.images && phone.images.length > 0) {
-                phone.images.forEach((imgUrl) => {
-                    try {
-                        // Convert full URL -> local path
-                        // Example: http://localhost:5000/uploads/phones/abc.jpg
-                        const relativePath = imgUrl.replace(
-                            `${req.protocol}://${req.get("host")}/`,
-                            ""
-                        );
-                        const filePath = path.join(__dirname, "..", relativePath);
-
-                        if (fs.existsSync(filePath)) {
-                            fs.unlinkSync(filePath);
-                            console.log(`🗑️ Deleted file: ${filePath}`);
-                        } else {
-                            console.warn(`⚠️ File not found: ${filePath}`);
-                        }
-                    } catch (err) {
-                        console.error(`❌ Failed to delete file: ${err.message}`);
+        if (newSupplier) {
+            // add/update link for new supplier
+            await Supplier.findByIdAndUpdate(newSupplier, {
+                $addToSet: {
+                    suppliedProducts: {
+                        productId: phone._id,
+                        modelType: "Phone",
+                        lastRestockDate: new Date()
                     }
-                });
-            }
-
-            // ✅ Remove the phone record
-            await Phone.findByIdAndDelete(id);
-
-            res.status(200).json({
-                status: true,
-                message: "Phone and its images deleted successfully",
-            });
-        } catch (error) {
-            console.error("❌ Delete phone error:", error);
-            res.status(500).json({
-                status: false,
-                message: error.message || "Failed to delete phone",
+                }
             });
         }
+
+        if (newTotalStock !== phone.stock) {
+            await stockService.createMovement({
+                productId: phone._id,
+                modelType: "Phone",
+                type: newTotalStock > phone.stock ? "in" : "out",
+                quantity: Math.abs(newTotalStock - phone.stock),
+                reference: "product_update",
+                referenceId: phone._id,
+                handledBy: req.user?.id,
+                note: "Stock updated via phone edit",
+            });
+        }
+
+        // ------------------------------------------------
+        // UPDATE PHONE
+        // ------------------------------------------------
+        const updated = await PhoneService.updatePhone(id, {
+            brand: body.brand,
+            model: body.model,
+            slug: (body.brand + "-" + body.model).toLowerCase(),
+            pricing,
+            currency: body.currency,
+            specs,
+            variants,
+            stock: newTotalStock,
+            category: body.category,
+            supplier: newSupplier,
+            lowStockThreshold: Number(body.lowStockThreshold) || 5,
+            isActive: body.isActive !== undefined ? Boolean(body.isActive) : phone.isActive,
+            images,
+        });
+
+        res.json({
+            success: true,
+            message: "Phone updated successfully",
+            phone: updated,
+        });
     }),
 
+    deletePhone: async (req, res, next) => {
+        const { id } = req.params;
+
+        const phone = await Phone.findById(id);
+        if (!phone) return next(new AppError("Phone not found", 404));
+
+        // Delete each image
+        if (Array.isArray(phone.images)) {
+            phone.images.forEach(imgUrl => {
+                try {
+                    // Extract filename from URL
+                    const filename = imgUrl.split('/').pop();
+
+                    const filePath = path.join(__dirname, '..', 'uploads', 'phones', filename);
+
+                    if (fs.existsSync(filePath)) {
+                        fs.unlinkSync(filePath);
+                        console.log("Deleted:", filePath);
+                    }
+                } catch (err) {
+                    console.error("Error deleting image:", err);
+                }
+            });
+        }
+
+        await phone.deleteOne();
+
+        res.json({ success: true, message: "Phone deleted successfully" });
+    },
+
+    // Example: endpoint to adjust stock (optional)
+    adjustStock: asyncHandler(async (req, res) => {
+        const { id } = req.params;
+        const { variantIndex, delta } = req.body;
+        if (!id) throw new AppError('Phone id required', 400);
+        if (typeof delta === 'undefined') throw new AppError('delta required', 400);
+
+        const phone = await PhoneService.adjustStock(id, { variantIndex, delta: Number(delta) });
+        res.json({ success: true, phone });
+    }),
 };

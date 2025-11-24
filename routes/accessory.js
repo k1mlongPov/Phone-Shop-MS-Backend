@@ -1,25 +1,30 @@
 const express = require('express');
 const router = express.Router();
-const accessoryController = require('../controllers/accessoryController');
-const multer = require('multer');
-const path = require('path');
 
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        cb(null, 'uploads/accessories/');
-    },
-    filename: (req, file, cb) => {
-        const uniqueName = `${Date.now()}-${file.originalname}`;
-        cb(null, uniqueName);
-    },
-});
+const accessoryCtrl = require('../controllers/accessoryController');
+const authMiddleware = require('../middleware/authMiddleware');
+const uploadAccessoryImages = require('../config/multerAccessory');
 
-const upload = multer({ storage });
+router.post(
+    '/',
+    authMiddleware,
+    uploadAccessoryImages.array('images', 6),
+    accessoryCtrl.create
+);
 
-router.post('/', upload.array('images', 10), accessoryController.createAccessory);
-router.get('/', accessoryController.listAccessories);
-router.get('/:id', accessoryController.getAccessoryById);
-router.put('/update/:id', upload.array('images', 10), accessoryController.updateAccessory);
-router.delete('/delete/:id', accessoryController.deleteAccessory);
+router.get('/', authMiddleware, accessoryCtrl.list);
+
+router.get('/:id', authMiddleware, accessoryCtrl.get);
+
+router.put(
+    '/:id',
+    authMiddleware,
+    uploadAccessoryImages.array('images', 6),
+    accessoryCtrl.update
+);
+
+router.delete('/:id', authMiddleware, accessoryCtrl.delete);
+
+router.post('/:id/restock', authMiddleware, accessoryCtrl.restock);
 
 module.exports = router;

@@ -1,8 +1,11 @@
 const express = require('express');
 const router = express.Router();
-const stockRoutes = require('../controllers/stockController');
+const stockCtrl = require('../controllers/stockController');
+const authMiddleware = require('../middleware/authMiddleware');
 
-router.post('/', stockRoutes.logMovement);
-router.get('/', stockRoutes.listMovements);
+// List stock movements
+router.get('/movements', authMiddleware, stockCtrl.list);
+
+router.post('/movements', authMiddleware, stockCtrl.create);
 
 module.exports = router;

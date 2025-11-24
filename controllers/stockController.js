@@ -1,18 +1,15 @@
-const asyncHandler = require('express-async-handler');
-const StockMovement = require('../models/Stock');
+const asyncHandler = require('../utils/asyncHandler');
+const stockService = require('../services/stockMovementService');
 
-exports.logMovement = asyncHandler(async (req, res) => {
-    const movement = await StockMovement.create(req.body);
-    res.status(201).json(movement);
+exports.list = asyncHandler(async (req, res) => {
+    const page = Number(req.query.page) || 1;
+    const limit = Number(req.query.limit) || 50;
+    const q = {}; // add filters
+    const result = await stockService.list(q, { page, limit });
+    res.json({ success: true, ...result });
 });
 
-exports.listMovements = asyncHandler(async (req, res) => {
-    const { type, modelType } = req.query;
-    const filter = {};
-    if (type) filter.type = type;
-    if (modelType) filter.modelType = modelType;
-    const data = await StockMovement.find(filter)
-        .populate('productId')
-        .sort({ createdAt: -1 });
-    res.json(data);
+exports.create = asyncHandler(async (req, res) => {
+    const mv = await stockService.createMovement(req.body);
+    res.status(201).json({ success: true, movement: mv });
 });
