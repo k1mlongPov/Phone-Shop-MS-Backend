@@ -2,14 +2,6 @@ const asyncHandler = require('../utils/asyncHandler');
 const supplierService = require('../services/supplierService');
 
 module.exports = {
-    create: asyncHandler(async (req, res) => {
-        const supplier = await supplierService.create(req.body);
-        res.status(201).json({
-            success: true,
-            message: 'Supplier created successfully',
-            data: supplier,
-        });
-    }),
 
     list: asyncHandler(async (req, res) => {
         const suppliers = await supplierService.list();
@@ -24,6 +16,15 @@ module.exports = {
         const supplier = await supplierService.getById(req.params.id);
         res.status(200).json({
             success: true,
+            data: supplier,
+        });
+    }),
+
+    create: asyncHandler(async (req, res) => {
+        const supplier = await supplierService.create(req.body);
+        res.status(201).json({
+            success: true,
+            message: 'Supplier created successfully',
             data: supplier,
         });
     }),

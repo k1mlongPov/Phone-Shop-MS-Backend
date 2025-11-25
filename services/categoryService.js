@@ -6,16 +6,13 @@ const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 100;
 
 module.exports = {
-    // ---------------- CREATE ----------------
-    async create(payload) {
-        const category = await Category.create(payload);
-        return category;
-    },
 
-
-    // ---------------- ROOT ----------------
     async getRootCategories() {
         return await Category.find({ parent: null }).lean();
+    },
+
+    async getById(id) {
+        return await Category.findById(id);
     },
 
     async listSubcategories(options = {}) {
@@ -70,20 +67,25 @@ module.exports = {
         };
     },
 
-    // ---------------- GET SUBCATEGORIES BY PARENT (backwards-compatible simple method) ----------------
     async getSubcategoriesByParent(parentId) {
         // simple lookup without pagination
         return await Category.find({ parent: parentId }).lean();
     },
 
-    // ---------------- UPDATE ----------------
+    async create(payload) {
+        const category = await Category.create(payload);
+        return category;
+    },
+
     async update(id, payload) {
-        const updated = await Category.findByIdAndUpdate(id, payload, { new: true });
+        const updated = await Category.findByIdAndUpdate(id, payload, {
+            new: true,
+            runValidators: true,
+        });
         if (!updated) throw new AppError('Category not found', 404);
         return updated;
     },
 
-    // ---------------- DELETE ----------------
     async delete(id) {
         const deleted = await Category.findByIdAndDelete(id);
         if (!deleted) throw new AppError('Category not found', 404);
