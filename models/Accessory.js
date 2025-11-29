@@ -35,13 +35,27 @@ const AccessorySchema = new mongoose.Schema({
             customer: { type: mongoose.Schema.Types.ObjectId, ref: 'Customer' },
         },
     ],
-}, { timestamps: true });
+}, { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } });
 
 AccessorySchema.virtual('profitMargin').get(function () {
     if (!this.pricing?.purchasePrice || !this.pricing?.sellingPrice) return 0;
     const profit = this.pricing.sellingPrice - this.pricing.purchasePrice;
     return Number(((profit / this.pricing.sellingPrice) * 100).toFixed(2));
 });
+
+AccessorySchema.virtual("isLowStock").get(function () {
+    const stock = this.stock ?? 0;
+    const threshold = this.lowStockThreshold ?? 0;
+
+    return stock <= threshold && stock > 0;
+});
+
+AccessorySchema.virtual("isOutOfStock").get(function () {
+    const stock = this.stock ?? 0;
+    return stock <= 0;
+});
+
+
 
 AccessorySchema.index({ name: 'text', brand: 'text', type: 'text' });
 

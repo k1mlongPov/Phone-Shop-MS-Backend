@@ -51,8 +51,8 @@ module.exports = async function authMiddleware(req, res, next) {
         return next();
     } catch (err) {
         if (err.name === 'TokenExpiredError') {
-            return next(new AppError('Session expired. Please log in again.', 401));
+            return next(new AppError('Token expired', 401));
         }
-        return next(err);
+        return next(new AppError(err.message, 401)); // force 401 always
     }
 };

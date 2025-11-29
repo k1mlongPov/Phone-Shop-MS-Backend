@@ -17,9 +17,10 @@ const AccessoryRoutes = require('./routes/accessory');
 const SupplierRoutes = require('./routes/supplier');
 const CustomerRoutes = require('./routes/customer');
 const StockMovementRoutes = require('./routes/stock');
-const InvoiceRoutes = require('./routes/invoice');
 const PurchaseOrderRoutes = require('./routes/purchaseOrder');
 const ReportRoutes = require('./routes/report');
+const DashboardRoutes = require("./routes/dashboard");
+const SalesRoutes = require('./routes/sale');
 
 const app = express();
 
@@ -40,9 +41,10 @@ app.use('/api/accessories', AccessoryRoutes);
 app.use('/api/suppliers', SupplierRoutes);
 app.use('/api/customers', CustomerRoutes);
 app.use('/api/stock', StockMovementRoutes);
-app.use('/api/invoices', InvoiceRoutes);
 app.use('/api/purchase-orders', PurchaseOrderRoutes);
 app.use('/api/reports', ReportRoutes);
+app.use("/api/dashboard", DashboardRoutes);
+app.use("/api/sales", SalesRoutes);
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 app.use(errorHandler);

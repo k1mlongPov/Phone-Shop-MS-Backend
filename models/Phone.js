@@ -118,6 +118,24 @@ PhoneSchema.virtual('totalStock').get(function () {
     return this.variants.reduce((sum, v) => sum + (v.stock || 0), 0);
 });
 
+// ---- LOW STOCK & OUT OF STOCK -----
+PhoneSchema.virtual("isLowStock").get(function () {
+    const total = Array.isArray(this.variants)
+        ? this.variants.reduce((sum, v) => sum + (v.stock || 0), 0)
+        : this.stock || 0;
+
+    return total <= this.lowStockThreshold && total > 0;
+});
+
+PhoneSchema.virtual("isOutOfStock").get(function () {
+    const total = Array.isArray(this.variants)
+        ? this.variants.reduce((sum, v) => sum + (v.stock || 0), 0)
+        : this.stock || 0;
+
+    return total <= 0;
+});
+
+
 // generate slug automatically if missing
 PhoneSchema.pre('validate', function (next) {
     if (!this.slug) {

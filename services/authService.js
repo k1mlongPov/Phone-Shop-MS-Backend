@@ -147,10 +147,9 @@ async function login({ email, password }) {
     const refreshToken = jwt.sign(
         { id: user._id },
         process.env.JWT_REFRESH_SECRET,
-        { expiresIn: process.env.JWT_REFRESH_EXPIRES_IN } // e.g. "30d"
+        { expiresIn: process.env.JWT_REFRESH_EXPIRES_IN }
     );
 
-    // ⭐ Save refresh token for future refresh requests
     user.refreshToken = refreshToken;
     await user.save();
 

@@ -6,6 +6,7 @@ const authMiddleware = require('../middleware/authMiddleware'); // implement thi
 router.get('/', authMiddleware, userCtrl.list);
 router.get('/:id', authMiddleware, userCtrl.get);
 router.put('/:id', authMiddleware, userCtrl.update);
+router.patch('/:id/roles', userCtrl.updateRoles);
 router.delete('/:id', authMiddleware, userCtrl.delete);
 
 module.exports = router;

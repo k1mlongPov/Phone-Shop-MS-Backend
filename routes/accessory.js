@@ -12,6 +12,10 @@ router.delete('/:id', authMiddleware, accessoryCtrl.delete);
 
 router.post('/:id/restock', authMiddleware, accessoryCtrl.restock);
 
+router.get("/low-stock", authMiddleware, accessoryCtrl.getLowStockAccessories);
+
+router.get("/out-of-stock", authMiddleware, accessoryCtrl.getOutOfStockAccessories);
+
 router.post(
     '/',
     authMiddleware,

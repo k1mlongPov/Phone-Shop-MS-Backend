@@ -21,7 +21,7 @@ const userSchema = new mongoose.Schema({
     },
     roles: {
         type: [String],
-        default: ['Customer'], // e.g., Customer, Staff, Admin, Cashier
+        default: ['Customer'],
     },
     profile: { type: String, default: 'https://images.pexels.com/photos/1704488/pexels-photo-1704488.jpeg' },
     purchaseHistory: [

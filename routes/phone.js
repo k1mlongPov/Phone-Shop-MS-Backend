@@ -10,7 +10,10 @@ router.get('/:id', authMiddleware, phoneCtrl.getPhoneById);
 
 router.delete('/:id', authMiddleware, phoneCtrl.deletePhone);
 
-router.post('/:id/restock', authMiddleware, phoneCtrl.adjustStock);
+router.get("/low-stock", authMiddleware, phoneCtrl.getLowStockPhones);
+
+router.get("/out-of-stock", authMiddleware, phoneCtrl.getOutOfStockPhones);
+
 
 router.post(
     '/',

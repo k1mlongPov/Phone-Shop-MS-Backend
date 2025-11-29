@@ -233,10 +233,21 @@ module.exports = {
             }
         }
 
+        // DELETE ACCESSORY
         await accessory.deleteOne();
 
-        res.json({ success: true, message: "Accessory deleted successfully" });
+        // 🧹 CLEAN SUPPLIER REFERENCES
+        await Supplier.updateMany(
+            {},
+            { $pull: { suppliedProducts: { productId: id } } }
+        );
+
+        res.json({
+            success: true,
+            message: "Accessory deleted successfully",
+        });
     },
+
 
     restock: asyncHandler(async (req, res) => {
         const id = req.params.id;
@@ -248,4 +259,33 @@ module.exports = {
         });
         res.json({ status: true, message: 'Accessory restocked', data: updated });
     }),
+
+    getLowStockAccessories: async (req, res) => {
+        const accessories = await Accessory.find()
+            .lean({ virtuals: true })
+            .populate("category supplier");
+
+        const filtered = accessories.filter(a => a.isLowStock);
+
+        res.json({
+            success: true,
+            count: filtered.length,
+            data: filtered,
+        });
+    },
+
+    getOutOfStockAccessories: async (req, res) => {
+        const accessories = await Accessory.find()
+            .lean({ virtuals: true })
+            .populate("category supplier");
+
+        const filtered = accessories.filter(a => a.isOutOfStock);
+
+        res.json({
+            success: true,
+            count: filtered.length,
+            data: filtered,
+        });
+    },
+
 };

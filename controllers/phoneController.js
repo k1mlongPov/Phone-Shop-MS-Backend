@@ -143,6 +143,18 @@ function parseVariants(data) {
 
 module.exports = {
 
+    listPhones: asyncHandler(async (req, res) => {
+        // forward query params directly; service validates/uses them
+        const result = await PhoneService.listPhones(req.query);
+        res.json({ success: true, ...result });
+    }),
+
+    getPhoneById: asyncHandler(async (req, res) => {
+        const { id } = req.params;
+        const phone = await PhoneService.getPhoneById(id);
+        res.json({ success: true, phone });
+    }),
+
     createPhone: asyncHandler(async (req, res) => {
         const data = req.body || {};
 
@@ -182,18 +194,6 @@ module.exports = {
 
         const phone = await PhoneService.createPhone(phoneData);
 
-        // Record first stock entry
-        await stockService.createMovement({
-            productId: phone._id,
-            modelType: 'Phone',
-            type: 'initial',
-            quantity: totalStock,
-            reference: 'product_create',
-            referenceId: phone._id,
-            handledBy: req.user?.id,
-            note: 'Initial stock on creation',
-        });
-
         // Supplier linking
         if (phone.supplier) {
             await Supplier.findByIdAndUpdate(phone.supplier, {
@@ -211,18 +211,6 @@ module.exports = {
             success: true,
             phone
         });
-    }),
-
-    listPhones: asyncHandler(async (req, res) => {
-        // forward query params directly; service validates/uses them
-        const result = await PhoneService.listPhones(req.query);
-        res.json({ success: true, ...result });
-    }),
-
-    getPhoneById: asyncHandler(async (req, res) => {
-        const { id } = req.params;
-        const phone = await PhoneService.getPhoneById(id);
-        res.json({ success: true, phone });
     }),
 
     updatePhone: asyncHandler(async (req, res) => {
@@ -275,21 +263,6 @@ module.exports = {
                 }
             });
         }
-
-        // Stock movement if changed
-        if (newTotalStock !== phone.stock) {
-            await stockService.createMovement({
-                productId: phone._id,
-                modelType: "Phone",
-                type: newTotalStock > phone.stock ? "in" : "out",
-                quantity: Math.abs(newTotalStock - phone.stock),
-                reference: "product_update",
-                referenceId: phone._id,
-                handledBy: req.user?.id,
-                note: "Stock updated via phone edit",
-            });
-        }
-
         // Final update
         const updated = await PhoneService.updatePhone(id, {
             brand: body.brand,
@@ -333,20 +306,43 @@ module.exports = {
 
         await phone.deleteOne();
 
+        await Supplier.updateMany(
+            {},
+            { $pull: { suppliedProducts: { productId: id } } }
+        );
+
         res.json({
             success: true,
             message: "Phone deleted successfully",
         });
     },
 
-    // Example: endpoint to adjust stock (optional)
-    adjustStock: asyncHandler(async (req, res) => {
-        const { id } = req.params;
-        const { variantIndex, delta } = req.body;
-        if (!id) throw new AppError('Phone id required', 400);
-        if (typeof delta === 'undefined') throw new AppError('delta required', 400);
+    getLowStockPhones: async (req, res) => {
+        const phones = await Phone.find()
+            .lean({ virtuals: true })
+            .populate("category supplier");
 
-        const phone = await PhoneService.adjustStock(id, { variantIndex, delta: Number(delta) });
-        res.json({ success: true, phone });
-    }),
+        const filtered = phones.filter(p => p.isLowStock);
+
+        res.json({
+            success: true,
+            count: filtered.length,
+            data: filtered,
+        });
+    },
+
+    getOutOfStockPhones: async (req, res) => {
+        const phones = await Phone.find()
+            .lean({ virtuals: true })
+            .populate("category supplier");
+
+        const filtered = phones.filter(p => p.isOutOfStock);
+
+        res.json({
+            success: true,
+            count: filtered.length,
+            data: filtered,
+        });
+    },
+
 };

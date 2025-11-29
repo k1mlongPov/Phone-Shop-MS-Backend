@@ -17,10 +17,6 @@ const PhoneService = {
         return phone;
     },
 
-    /**
-     * List phones with filters, pagination, sorting.
-     * @param {Object} opts - query options (page, limit, brand, category, q, minPrice, maxPrice, sort)
-     */
     async listPhones(opts = {}) {
         const {
             page = 1,
@@ -102,10 +98,6 @@ const PhoneService = {
         };
     },
 
-    /**
-     * Get phone by id
-     * @param {string} id
-     */
     async getPhoneById(id) {
         if (!mongoose.Types.ObjectId.isValid(id)) {
             throw new AppError('Invalid phone id', 400);
@@ -115,11 +107,6 @@ const PhoneService = {
         return phone;
     },
 
-    /**
-     * Update phone by id. updateData must be pre-validated/parsed by controller.
-     * @param {string} id
-     * @param {Object} updateData
-     */
     async updatePhone(id, payload) {
         const phone = await Phone.findByIdAndUpdate(id, payload, {
             new: true,
@@ -131,11 +118,6 @@ const PhoneService = {
         return phone;
     },
 
-
-    /**
-     * Delete phone by id
-     * @param {string} id
-     */
     async deletePhone(id) {
         if (!mongoose.Types.ObjectId.isValid(id)) {
             throw new AppError('Invalid phone id', 400);
@@ -145,11 +127,6 @@ const PhoneService = {
         return deleted;
     },
 
-    /**
-     * Optional: adjust stock on a variant or phone level (example helper).
-     * @param {string} id
-     * @param {Object} opts - { variantId?, delta }
-     */
     async adjustStock(id, { variantIndex, delta }) {
         if (!mongoose.Types.ObjectId.isValid(id)) {
             throw new AppError('Invalid phone id', 400);

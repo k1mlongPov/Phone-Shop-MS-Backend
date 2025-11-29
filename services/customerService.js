@@ -1,26 +1,56 @@
-const Customer = require('../models/Customer');
-const AppError = require('../utils/AppError');
+const Customer = require("../models/Customer");
+const User = require("../models/User");
 
-async function create(data) { return Customer.create(data); }
-async function list(q = {}, opts = {}) {
-    const page = opts.page || 1, limit = opts.limit || 30;
-    const customers = await Customer.find(q).skip((page - 1) * limit).limit(limit);
-    const total = await Customer.countDocuments(q);
-    return { customers, total };
+async function listCustomers() {
+    return Customer.find().sort({ createdAt: -1 });
 }
-async function getById(id) {
-    const c = await Customer.findById(id);
-    if (!c) throw new AppError('Customer not found', 404);
-    return c;
+
+async function createCustomer(data) {
+    return Customer.create(data);
 }
-async function update(id, data) {
-    const c = await Customer.findByIdAndUpdate(id, data, { new: true });
-    if (!c) throw new AppError('Customer not found', 404);
-    return c;
+
+async function updateCustomer(id, data) {
+    const updated = await Customer.findByIdAndUpdate(
+        id,
+        { $set: data },
+        { new: true, runValidators: true }
+    );
+
+    return updated;
 }
-async function remove(id) {
-    const c = await Customer.findByIdAndDelete(id);
-    if (!c) throw new AppError('Customer not found', 404);
-    return c;
+
+async function getCustomerById(id) {
+    return Customer.findById(id);
 }
-module.exports = { create, list, getById, update, remove };
+
+async function searchCustomers(query) {
+    const regex = new RegExp(query, "i");
+
+    return Customer.find({
+        $or: [{ name: regex }, { phone: regex }],
+    });
+}
+
+/**
+ * Fetch Users filtered by role (Customer / Staff / Admin)
+ */
+async function listUsersByRole(role) {
+    const query = {};
+
+    if (role) {
+        query.roles = role; // roles: ["Admin"] for example
+    }
+
+    return User.find(query)
+        .select("-password -otp -otpCreatedAt")
+        .sort({ createdAt: -1 });
+}
+
+module.exports = {
+    listCustomers,
+    createCustomer,
+    updateCustomer,
+    getCustomerById,
+    searchCustomers,
+    listUsersByRole,
+};
