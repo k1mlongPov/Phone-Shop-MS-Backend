@@ -69,9 +69,7 @@ async function createSale(payload, sellerId) {
             let variant = null;
             if (variantId) {
                 variant = phone.variants.id(variantId);
-                if (!variant) {
-                    throw new AppError('Phone variant not found', 404);
-                }
+                if (!variant) throw new AppError('Phone variant not found', 404);
             } else if (phone.variants.length === 1) {
                 variant = phone.variants[0];
             } else {
@@ -90,7 +88,7 @@ async function createSale(payload, sellerId) {
                 );
             }
 
-            // Price from variant or phone
+            // selling price
             const unitPrice =
                 (variant.pricing && variant.pricing.sellingPrice) ||
                 (phone.pricing && phone.pricing.sellingPrice) ||
@@ -101,16 +99,13 @@ async function createSale(payload, sellerId) {
 
             // Decrease stock
             variant.stock = (variant.stock || 0) - quantity;
-            // Optionally sync phone.stock with virtual total
+
+            // Sync phone.stock with total variant stock
             phone.stock = phone.variants.reduce(
                 (sum, v) => sum + (v.stock || 0),
                 0
             );
-            await phone.save();
 
-            const variantLabel = buildPhoneVariantLabel(variant);
-
-            // Push saleHistory to phone
             if (!Array.isArray(phone.saleHistory)) phone.saleHistory = [];
             phone.saleHistory.push({
                 date: new Date(),
@@ -119,7 +114,11 @@ async function createSale(payload, sellerId) {
                 handledBy: sellerId?.toString(),
                 customer: customer?._id,
             });
-            await phone.save(); // save again for history
+
+            // Save once
+            await phone.save();
+
+            const variantLabel = buildPhoneVariantLabel(variant);
 
             invoiceItems.push({
                 productId: phone._id,
@@ -133,7 +132,7 @@ async function createSale(payload, sellerId) {
                 totalPrice: lineTotal,
             });
 
-            // Stock movement (sale)
+            // Record stock movement
             await stockService.createMovement({
                 productId: phone._id,
                 modelType: 'Phone',
@@ -142,9 +141,9 @@ async function createSale(payload, sellerId) {
                 reference: 'invoice_sale',
                 handledBy: sellerId?.toString(),
                 note: `Sold via invoice`,
-                // variantId: variant._id,  // add if your StockMovement schema has this
             });
-        } else if (modelType === 'Accessory') {
+        }
+        else if (modelType === 'Accessory') {
             const accessory = await Accessory.findById(productId);
             if (!accessory) throw new AppError('Accessory not found', 404);
 
@@ -265,27 +264,25 @@ async function createSale(payload, sellerId) {
     return invoice;
 }
 
-async function getInvoiceById(id) {
-    const invoice = await Invoice.findById(id)
-        .populate('customer')
-        .populate('seller');
-    if (!invoice) throw new AppError('Invoice not found', 404);
-    return invoice;
+async function listInvoices({ customer, start, end, status }) {
+    const query = {};
+
+    if (customer) query.customer = customer;
+    if (status) query.status = status;
+
+    if (start || end) {
+        query.createdAt = {};
+        if (start) query.createdAt.$gte = new Date(start);
+        if (end) query.createdAt.$lte = new Date(end);
+    }
+
+    return Invoice.find(query)
+        .sort({ createdAt: -1 })
+        .select("-__v");
 }
 
-async function listInvoices({ page = 1, limit = 20 } = {}) {
-    const skip = (page - 1) * limit;
-    const [items, total] = await Promise.all([
-        Invoice.find()
-            .sort({ createdAt: -1 })
-            .skip(skip)
-            .limit(limit)
-            .populate('customer')
-            .populate('seller'),
-        Invoice.countDocuments(),
-    ]);
-
-    return { items, total, page, limit };
+async function getInvoiceById(id) {
+    return Invoice.findById(id).select("-__v");
 }
 
 module.exports = {

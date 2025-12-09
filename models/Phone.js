@@ -101,24 +101,31 @@ const PhoneSchema = new mongoose.Schema(
                 supplier: { type: mongoose.Schema.Types.ObjectId, ref: 'Supplier' },
             },
         ],
+        saleHistory: [
+            {
+                date: { type: Date, default: Date.now },
+                quantity: Number,
+                soldPrice: Number,
+                handledBy: String,
+                customer: { type: mongoose.Schema.Types.ObjectId, ref: 'Customer' },
+            },
+        ],
+
     },
     { timestamps: true, toJSON: { virtuals: true }, toObject: { virtuals: true } }
 );
 
-// compute profit margin from base pricing
 PhoneSchema.virtual('profitMargin').get(function () {
     if (!this.pricing || !this.pricing.purchasePrice || !this.pricing.sellingPrice) return 0;
     const profit = this.pricing.sellingPrice - this.pricing.purchasePrice;
     return Number(((profit / this.pricing.sellingPrice) * 100).toFixed(2));
 });
 
-// total stock aggregated from variants (preferred source of truth)
 PhoneSchema.virtual('totalStock').get(function () {
     if (!this.variants || this.variants.length === 0) return this.stock || 0;
     return this.variants.reduce((sum, v) => sum + (v.stock || 0), 0);
 });
 
-// ---- LOW STOCK & OUT OF STOCK -----
 PhoneSchema.virtual("isLowStock").get(function () {
     const total = Array.isArray(this.variants)
         ? this.variants.reduce((sum, v) => sum + (v.stock || 0), 0)
@@ -136,7 +143,6 @@ PhoneSchema.virtual("isOutOfStock").get(function () {
 });
 
 
-// generate slug automatically if missing
 PhoneSchema.pre('validate', function (next) {
     if (!this.slug) {
         const s = `${this.brand || ''} ${this.model || ''}`;
@@ -156,7 +162,6 @@ PhoneSchema.pre('validate', function (next) {
     next();
 });
 
-// Indexes for common queries
 PhoneSchema.index({ brand: 1, model: 1 });
 
 module.exports = mongoose.model('Phone', PhoneSchema);

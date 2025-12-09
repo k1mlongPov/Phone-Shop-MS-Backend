@@ -7,4 +7,6 @@ router.get("/stats", authMiddleware, dashboardCtrl.getDashboardStats);
 
 router.get("/restock-history", authMiddleware, dashboardCtrl.getRestockHistory);
 
+router.get("/revenue-7-days", dashboardCtrl.getSevenDayRevenue);
+
 module.exports = router;

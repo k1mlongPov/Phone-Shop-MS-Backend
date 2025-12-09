@@ -4,7 +4,7 @@ const saleCtrl = require('../controllers/saleController');
 const auth = require('../middleware/authMiddleware');
 
 router.post('/', auth, saleCtrl.createSale);
-router.get('/', auth, saleCtrl.listInvoices);
-router.get('/:id', auth, saleCtrl.getInvoice);
+router.get('/', auth, saleCtrl.list);
+router.get('/:id', auth, saleCtrl.getById);
 
 module.exports = router;

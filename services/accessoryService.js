@@ -5,7 +5,6 @@ const AppError = require('../utils/AppError');
 
 const AccessoryService = {
     async createAccessory(payload) {
-        // minimal validation
         const name = payload.name?.trim();
         const type = payload.type?.trim();
         if (!name || !type) throw new AppError('Name and Type are required', 400);

@@ -92,7 +92,7 @@ module.exports = {
         await stockService.createMovement({
             productId: accessory._id,
             modelType: 'Accessory',
-            type: 'initial',
+            type: 'restock',
             quantity: Number(accessoryPayload.stock) || 0,
             reference: 'product_create',
             referenceId: accessory._id,

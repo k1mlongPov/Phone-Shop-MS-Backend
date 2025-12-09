@@ -11,23 +11,15 @@ exports.createSale = asyncHandler(async (req, res) => {
     });
 });
 
-exports.getInvoice = asyncHandler(async (req, res) => {
-    const invoice = await saleService.getInvoiceById(req.params.id);
-
-    res.json({
-        success: true,
-        data: invoice,
-    });
+exports.list = asyncHandler(async (req, res) => {
+    const invoices = await saleService.listInvoices(req.query);
+    res.json({ success: true, data: invoices });
 });
 
-exports.listInvoices = asyncHandler(async (req, res) => {
-    const page = Number(req.query.page) || 1;
-    const limit = Number(req.query.limit) || 20;
+// GET /api/invoices/:id
+exports.getById = asyncHandler(async (req, res) => {
+    const invoice = await saleService.getInvoiceById(req.params.id);
+    if (!invoice) throw new AppError("Invoice not found", 404);
 
-    const result = await saleService.listInvoices({ page, limit });
-
-    res.json({
-        success: true,
-        ...result,
-    });
+    res.json({ success: true, data: invoice });
 });
